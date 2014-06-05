@@ -815,6 +815,7 @@ struct kvm_ppc_smmu_info {
 #define KVM_CAP_S390_IRQ_STATE 114
 #define KVM_CAP_PPC_HWRNG 115
 #define KVM_CAP_SPAPR_TCE_VFIO 116
+#define KVM_CAP_SPAPR_TCE_64 117
 
 #ifdef KVM_CAP_IRQ_ROUTING
 
