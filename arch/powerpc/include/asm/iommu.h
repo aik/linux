@@ -117,6 +117,7 @@ static inline void *get_iommu_table_base(struct device *dev)
 	return dev->archdata.dma_data.iommu_table_base;
 }
 
+extern struct iommu_table *iommu_table_alloc(int node);
 /* Frees table for an individual device node */
 extern void iommu_free_table(struct iommu_table *tbl, const char *node_name);
 
