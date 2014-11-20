@@ -1206,7 +1206,7 @@ static void pnv_pci_ioda_setup_dma_pe(struct pnv_phb *phb,
 				 TCE_PCI_SWINV_FREE   |
 				 TCE_PCI_SWINV_PAIR);
 	}
-	iommu_init_table(tbl, phb->hose->node);
+	iommu_init_table(tbl, phb->hose->node, &pnv_iommu_ops);
 	iommu_register_group(tbl, phb->hose->global_number, pe->pe_number);
 
 	if (pe->pdev)
@@ -1339,7 +1339,7 @@ static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
 				8);
 		tbl->it_type |= (TCE_PCI_SWINV_CREATE | TCE_PCI_SWINV_FREE);
 	}
-	iommu_init_table(tbl, phb->hose->node);
+	iommu_init_table(tbl, phb->hose->node, &pnv_iommu_ops);
 	iommu_register_group(tbl, phb->hose->global_number, pe->pe_number);
 
 	if (pe->pdev)
