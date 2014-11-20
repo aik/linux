@@ -660,18 +660,11 @@ static unsigned long pnv_tce_get(struct iommu_table *tbl, long index)
 	return ((u64 *)tbl->it_base)[index - tbl->it_offset];
 }
 
-static int pnv_tce_build_rm(struct iommu_table *tbl, long index, long npages,
-			    unsigned long uaddr,
-			    enum dma_data_direction direction,
-			    struct dma_attrs *attrs)
-{
-	return pnv_tce_build(tbl, index, npages, uaddr, direction, attrs, true);
-}
-
-static void pnv_tce_free_rm(struct iommu_table *tbl, long index, long npages)
-{
-	pnv_tce_free(tbl, index, npages, true);
-}
+struct iommu_table_ops pnv_iommu_ops = {
+	.set = pnv_tce_build_vm,
+	.clear = pnv_tce_free_vm,
+	.get = pnv_tce_get,
+};
 
 void pnv_pci_setup_iommu_table(struct iommu_table *tbl,
 			       void *tce_mem, u64 tce_size,
@@ -705,7 +698,7 @@ static struct iommu_table *pnv_pci_setup_bml_iommu(struct pci_controller *hose)
 		return NULL;
 	pnv_pci_setup_iommu_table(tbl, __va(be64_to_cpup(basep)),
 				  be32_to_cpup(sizep), 0, IOMMU_PAGE_SHIFT_4K);
-	iommu_init_table(tbl, hose->node);
+	iommu_init_table(tbl, hose->node, &pnv_iommu_ops);
 	iommu_register_group(tbl, pci_domain_nr(hose->bus), 0);
 
 	/* Deal with SW invalidated TCEs when needed (BML way) */
@@ -859,11 +852,6 @@ void __init pnv_pci_init(void)
 
 	/* Configure IOMMU DMA hooks */
 	ppc_md.pci_dma_dev_setup = pnv_pci_dma_dev_setup;
-	ppc_md.tce_build = pnv_tce_build_vm;
-	ppc_md.tce_free = pnv_tce_free_vm;
-	ppc_md.tce_build_rm = pnv_tce_build_rm;
-	ppc_md.tce_free_rm = pnv_tce_free_rm;
-	ppc_md.tce_get = pnv_tce_get;
 	ppc_md.pci_probe_mode = pnv_pci_probe_mode;
 	set_pci_dma_ops(&dma_iommu_ops);
 
