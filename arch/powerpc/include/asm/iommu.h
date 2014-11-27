@@ -92,7 +92,6 @@ struct iommu_table {
 	unsigned long  it_page_shift;/* table iommu page size */
 	struct powerpc_iommu *it_iommu;
 	struct iommu_table_ops *it_ops;
-	void (*set_bypass)(struct iommu_table *tbl, bool enable);
 };
 
 /* Pure 2^n version of get_order */
@@ -128,12 +127,25 @@ extern struct iommu_table *iommu_init_table(struct iommu_table * tbl,
 
 #define POWERPC_IOMMU_MAX_TABLES	1
 
+struct powerpc_iommu;
+
+struct powerpc_iommu_ops {
+	/*
+	 * Switches ownership from the kernel itself to an external
+	 * user. While onwership is enabled, the kernel cannot use IOMMU
+	 * for itself.
+	 */
+	void (*set_ownership)(struct powerpc_iommu *iommu,
+			bool enable);
+};
+
 struct powerpc_iommu {
 #ifdef CONFIG_IOMMU_API
 	struct iommu_group *group;
 #endif
 	long num;
 	struct iommu_table tables[POWERPC_IOMMU_MAX_TABLES];
+	struct powerpc_iommu_ops *ops;
 };
 
 #ifdef CONFIG_IOMMU_API
@@ -221,8 +233,8 @@ extern unsigned long iommu_clear_tce(struct iommu_table *tbl,
 		unsigned long entry);
 
 extern void iommu_flush_tce(struct iommu_table *tbl);
-extern int iommu_take_ownership(struct iommu_table *tbl);
-extern void iommu_release_ownership(struct iommu_table *tbl);
+extern int iommu_take_ownership(struct powerpc_iommu *iommu);
+extern void iommu_release_ownership(struct powerpc_iommu *iommu);
 
 #endif /* __KERNEL__ */
 #endif /* _ASM_IOMMU_H */
