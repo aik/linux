@@ -711,7 +711,7 @@ static int tce_iommu_attach_group(void *iommu_data,
 		if (WARN_ON_ONCE(!iommu))
 			return -ENXIO;
 
-		ret = iommu_take_ownership(&iommu->tables[0]);
+		ret = iommu_take_ownership(iommu);
 		if (!ret)
 			container->grp = iommu_group;
 	}
@@ -750,7 +750,7 @@ static void tce_iommu_detach_group(void *iommu_data,
 				iommu->tables[0].it_offset,
 				iommu->tables[0].it_size);
 
-		iommu_release_ownership(&iommu->tables[0]);
+		iommu_release_ownership(iommu);
 	}
 	mutex_unlock(&container->lock);
 }

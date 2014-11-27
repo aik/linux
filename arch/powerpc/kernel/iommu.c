@@ -1024,7 +1024,7 @@ int iommu_tce_build(struct iommu_table *tbl, unsigned long entry,
 }
 EXPORT_SYMBOL_GPL(iommu_tce_build);
 
-int iommu_take_ownership(struct iommu_table *tbl)
+static int iommu_table_take_ownership(struct iommu_table *tbl)
 {
 	unsigned long flags, i, sz = (tbl->it_size + 7) >> 3;
 	int ret = 0;
@@ -1049,19 +1049,43 @@ int iommu_take_ownership(struct iommu_table *tbl)
 		spin_unlock(&tbl->pools[i].lock);
 	spin_unlock_irqrestore(&tbl->large_pool.lock, flags);
 
+	return 0;
+}
+
+static void iommu_table_release_ownership(struct iommu_table *tbl);
+
+int iommu_take_ownership(struct powerpc_iommu *iommu)
+{
+	int i, j, rc = 0;
+
+	for (i = 0; i < iommu->num; ++i) {
+		struct iommu_table *tbl = &iommu->tables[i];
+
+		if (!tbl->it_map)
+			continue;
+
+		rc = iommu_table_take_ownership(tbl);
+		if (rc) {
+			for (j = 0; j < i; ++j)
+				iommu_table_release_ownership(
+						&iommu->tables[j]);
+
+			return rc;
+		}
+	}
 	/*
 	 * Disable iommu bypass, otherwise the user can DMA to all of
 	 * our physical memory via the bypass window instead of just
 	 * the pages that has been explicitly mapped into the iommu
 	 */
-	if (!ret && tbl->set_bypass)
-		tbl->set_bypass(tbl, false);
+	if (iommu->ops && iommu->ops->set_ownership)
+		iommu->ops->set_ownership(iommu, true);
 
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(iommu_take_ownership);
 
-void iommu_release_ownership(struct iommu_table *tbl)
+static void iommu_table_release_ownership(struct iommu_table *tbl)
 {
 	unsigned long flags, i, sz = (tbl->it_size + 7) >> 3;
 
@@ -1078,10 +1102,22 @@ void iommu_release_ownership(struct iommu_table *tbl)
 	for (i = 0; i < tbl->nr_pools; i++)
 		spin_unlock(&tbl->pools[i].lock);
 	spin_unlock_irqrestore(&tbl->large_pool.lock, flags);
+}
 
-	/* The kernel owns the device now, we can restore the iommu bypass */
-	if (tbl->set_bypass)
-		tbl->set_bypass(tbl, true);
+extern void iommu_release_ownership(struct powerpc_iommu *iommu)
+{
+	int i;
+
+	for (i = 0; i < iommu->num; ++i) {
+		struct iommu_table *tbl = &iommu->tables[i];
+
+		if (tbl->it_map)
+			iommu_table_release_ownership(tbl);
+	}
+
+	/* Kernel owns the device now, we can restore bypass */
+	if (iommu->ops && iommu->ops->set_ownership)
+		iommu->ops->set_ownership(iommu, false);
 }
 EXPORT_SYMBOL_GPL(iommu_release_ownership);
 
