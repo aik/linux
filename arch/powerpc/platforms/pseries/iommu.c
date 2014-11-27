@@ -622,7 +622,7 @@ static void pci_dma_bus_setup_pSeries(struct pci_bus *bus)
 	iommu_table_setparms(pci->phb, dn, tbl);
 	pci->iommu_table = iommu_init_table(tbl, pci->phb->node,
 			&iommu_table_pseries_ops);
-	iommu_register_group(tbl, pci_domain_nr(bus), 0);
+	iommu_register_group(tbl->it_iommu, pci_domain_nr(bus), 0);
 
 	/* Divide the rest (1.75GB) among the children */
 	pci->phb->dma_window_size = 0x80000000ul;
@@ -672,7 +672,7 @@ static void pci_dma_bus_setup_pSeriesLP(struct pci_bus *bus)
 		iommu_table_setparms_lpar(ppci->phb, pdn, tbl, dma_window);
 		ppci->iommu_table = iommu_init_table(tbl, ppci->phb->node,
 				&iommu_table_lpar_multi_ops);
-		iommu_register_group(tbl, pci_domain_nr(bus), 0);
+		iommu_register_group(tbl->it_iommu, pci_domain_nr(bus), 0);
 		pr_debug("  created table: %p\n", ppci->iommu_table);
 	}
 }
@@ -699,7 +699,7 @@ static void pci_dma_dev_setup_pSeries(struct pci_dev *dev)
 		iommu_table_setparms(phb, dn, tbl);
 		PCI_DN(dn)->iommu_table = iommu_init_table(tbl, phb->node,
 				&iommu_table_pseries_ops);
-		iommu_register_group(tbl, pci_domain_nr(phb->bus), 0);
+		iommu_register_group(tbl->it_iommu, pci_domain_nr(phb->bus), 0);
 		set_iommu_table_base_and_group(&dev->dev,
 					       PCI_DN(dn)->iommu_table);
 		return;
@@ -1121,7 +1121,7 @@ static void pci_dma_dev_setup_pSeriesLP(struct pci_dev *dev)
 		iommu_table_setparms_lpar(pci->phb, pdn, tbl, dma_window);
 		pci->iommu_table = iommu_init_table(tbl, pci->phb->node,
 				&iommu_table_lpar_multi_ops);
-		iommu_register_group(tbl, pci_domain_nr(pci->phb->bus), 0);
+		iommu_register_group(tbl->it_iommu, pci_domain_nr(pci->phb->bus), 0);
 		pr_debug("  created table: %p\n", pci->iommu_table);
 	} else {
 		pr_debug("  found DMA window, table: %p\n", pci->iommu_table);

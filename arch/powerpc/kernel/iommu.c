@@ -714,17 +714,21 @@ struct iommu_table *iommu_init_table(struct iommu_table *tbl, int nid,
 
 struct iommu_table *iommu_table_alloc(int node)
 {
-	struct iommu_table *tbl;
+	struct powerpc_iommu *iommu;
 
-	tbl = kzalloc_node(sizeof(struct iommu_table), GFP_KERNEL, node);
+	iommu = kzalloc_node(sizeof(struct powerpc_iommu), GFP_KERNEL,
+			   node);
+	iommu->num = 1;
+	iommu->tables[0].it_iommu = iommu;
 
-	return tbl;
+	return &iommu->tables[0];
 }
 
 void iommu_free_table(struct iommu_table *tbl, const char *node_name)
 {
 	unsigned long bitmap_sz;
 	unsigned int order;
+	struct powerpc_iommu *iommu = tbl->it_iommu;
 
 	if (!tbl || !tbl->it_map) {
 		printk(KERN_ERR "%s: expected TCE map for %s\n", __func__,
@@ -740,9 +744,9 @@ void iommu_free_table(struct iommu_table *tbl, const char *node_name)
 		clear_bit(0, tbl->it_map);
 
 #ifdef CONFIG_IOMMU_API
-	if (tbl->it_group) {
-		iommu_group_put(tbl->it_group);
-		BUG_ON(tbl->it_group);
+	if (iommu->group) {
+		iommu_group_put(iommu->group);
+		BUG_ON(iommu->group);
 	}
 #endif
 
@@ -758,7 +762,7 @@ void iommu_free_table(struct iommu_table *tbl, const char *node_name)
 	free_pages((unsigned long) tbl->it_map, order);
 
 	/* free table */
-	kfree(tbl);
+	kfree(iommu);
 }
 
 /* Creates TCEs for a user provided buffer.  The user buffer must be
@@ -890,11 +894,11 @@ void iommu_free_coherent(struct iommu_table *tbl, size_t size,
  */
 static void group_release(void *iommu_data)
 {
-	struct iommu_table *tbl = iommu_data;
-	tbl->it_group = NULL;
+	struct powerpc_iommu *iommu = iommu_data;
+	iommu->group = NULL;
 }
 
-void iommu_register_group(struct iommu_table *tbl,
+void iommu_register_group(struct powerpc_iommu *iommu,
 		int pci_domain_number, unsigned long pe_num)
 {
 	struct iommu_group *grp;
@@ -906,8 +910,8 @@ void iommu_register_group(struct iommu_table *tbl,
 				PTR_ERR(grp));
 		return;
 	}
-	tbl->it_group = grp;
-	iommu_group_set_iommudata(grp, tbl, group_release);
+	iommu->group = grp;
+	iommu_group_set_iommudata(grp, iommu, group_release);
 	name = kasprintf(GFP_KERNEL, "domain%d-pe%lx",
 			pci_domain_number, pe_num);
 	if (!name)
@@ -1101,7 +1105,7 @@ int iommu_add_device(struct device *dev)
 	}
 
 	tbl = get_iommu_table_base(dev);
-	if (!tbl || !tbl->it_group) {
+	if (!tbl || !tbl->it_iommu || !tbl->it_iommu->group) {
 		pr_debug("%s: Skipping device %s with no tbl\n",
 			 __func__, dev_name(dev));
 		return 0;
@@ -1109,7 +1113,7 @@ int iommu_add_device(struct device *dev)
 
 	pr_debug("%s: Adding %s to iommu group %d\n",
 		 __func__, dev_name(dev),
-		 iommu_group_id(tbl->it_group));
+		 iommu_group_id(tbl->it_iommu->group));
 
 	if (PAGE_SIZE < IOMMU_PAGE_SIZE(tbl)) {
 		pr_err("%s: Invalid IOMMU page size %lx (%lx) on %s\n",
@@ -1118,7 +1122,7 @@ int iommu_add_device(struct device *dev)
 		return -EINVAL;
 	}
 
-	return iommu_group_add_device(tbl->it_group, dev);
+	return iommu_group_add_device(tbl->it_iommu->group, dev);
 }
 EXPORT_SYMBOL_GPL(iommu_add_device);
 
