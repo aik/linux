@@ -90,9 +90,7 @@ struct iommu_table {
 	struct iommu_pool pools[IOMMU_NR_POOLS];
 	unsigned long *it_map;       /* A simple allocation bitmap for now */
 	unsigned long  it_page_shift;/* table iommu page size */
-#ifdef CONFIG_IOMMU_API
-	struct iommu_group *it_group;
-#endif
+	struct powerpc_iommu *it_iommu;
 	struct iommu_table_ops *it_ops;
 	void (*set_bypass)(struct iommu_table *tbl, bool enable);
 };
@@ -128,13 +126,23 @@ extern struct iommu_table *iommu_init_table(struct iommu_table * tbl,
 					    int nid,
 					    struct iommu_table_ops *ops);
 
+#define POWERPC_IOMMU_MAX_TABLES	1
+
+struct powerpc_iommu {
 #ifdef CONFIG_IOMMU_API
-extern void iommu_register_group(struct iommu_table *tbl,
+	struct iommu_group *group;
+#endif
+	long num;
+	struct iommu_table tables[POWERPC_IOMMU_MAX_TABLES];
+};
+
+#ifdef CONFIG_IOMMU_API
+extern void iommu_register_group(struct powerpc_iommu *iommu,
 				 int pci_domain_number, unsigned long pe_num);
 extern int iommu_add_device(struct device *dev);
 extern void iommu_del_device(struct device *dev);
 #else
-static inline void iommu_register_group(struct iommu_table *tbl,
+static inline void iommu_register_group(struct powerpc_iommu *iommu,
 					int pci_domain_number,
 					unsigned long pe_num)
 {
