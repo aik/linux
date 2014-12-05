@@ -1387,19 +1387,6 @@ static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
 	addr = page_address(tce_mem);
 	memset(addr, 0, tce_table_size);
 
-	/*
-	 * Map TCE table through TVT. The TVE index is the PE number
-	 * shifted by 1 bit for 32-bits DMA space.
-	 */
-	rc = opal_pci_map_pe_dma_window(phb->opal_id, pe->pe_number,
-					pe->pe_number << 1, 1, __pa(addr),
-					tce_table_size, 0x1000);
-	if (rc) {
-		pe_err(pe, "Failed to configure 32-bit TCE table,"
-		       " err %ld\n", rc);
-		goto fail;
-	}
-
 	/* Setup iommu */
 	pe->iommu.num = 1;
 	pe->iommu.tables[0].it_iommu = &pe->iommu;
@@ -1408,6 +1395,22 @@ static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
 	tbl = &pe->iommu.tables[0];
 	pnv_pci_setup_iommu_table(tbl, addr, tce_table_size, 0,
 			IOMMU_PAGE_SHIFT_4K);
+
+	iommu_init_table(tbl, phb->hose->node, &pnv_ioda2_iommu_ops);
+	pe->iommu.ops = &pnv_pci_ioda2_ops;
+
+	/*
+	 * Map TCE table through TVT. The TVE index is the PE number
+	 * shifted by 1 bit for 32-bits DMA space.
+	 */
+	rc = opal_pci_map_pe_dma_window(phb->opal_id, pe->pe_number,
+			pe->pe_number << 1, 1, __pa(tbl->it_base),
+			tbl->it_size << 3, 1 << tbl->it_page_shift);
+	if (rc) {
+		pe_err(pe, "Failed to configure 32-bit TCE table,"
+		       " err %ld\n", rc);
+		goto fail;
+	}
 
 	/* OPAL variant of PHB3 invalidated TCEs */
 	swinvp = of_get_property(phb->hose->dn, "ibm,opal-tce-kill", NULL);
@@ -1422,13 +1425,13 @@ static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
 				8);
 		tbl->it_type |= (TCE_PCI_SWINV_CREATE | TCE_PCI_SWINV_FREE);
 	}
-	iommu_init_table(tbl, phb->hose->node, &pnv_ioda2_iommu_ops);
-	pe->iommu.ops = &pnv_pci_ioda2_ops;
+
 	iommu_register_group(&pe->iommu, phb->hose->global_number,
 			pe->pe_number);
 
 	if (pe->pdev)
-		set_iommu_table_base_and_group(&pe->pdev->dev, tbl);
+		set_iommu_table_base_and_group(&pe->pdev->dev,
+				&pe->iommu.tables[0]);
 	else
 		pnv_ioda_setup_bus_dma(pe, pe->pbus, true);
 
