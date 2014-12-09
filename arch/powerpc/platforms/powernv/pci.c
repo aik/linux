@@ -605,6 +605,25 @@ static unsigned long pnv_dmadir_to_flags(enum dma_data_direction direction)
 static __be64 *pnv_tce(struct iommu_table *tbl, long index)
 {
 	__be64 *tmp = ((__be64 *)tbl->it_base);
+	int  level = tbl->it_indirect_levels;
+	const long shift = ilog2(tbl->it_level_size);
+	unsigned long mask = (tbl->it_level_size - 1) << (level * shift);
+
+	if (index >= tbl->it_size)
+		return NULL;
+
+	while (level) {
+		int n = (index & mask) >> (level * shift);
+		unsigned long tce = be64_to_cpu(tmp[n]);
+
+		if (!(tce & (TCE_PCI_READ | TCE_PCI_WRITE)))
+			return NULL;
+
+		tmp = __va(tce & ~(TCE_PCI_READ | TCE_PCI_WRITE));
+		index &= ~mask;
+		mask >>= shift;
+		--level;
+	}
 
 	return tmp + index;
 }

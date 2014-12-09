@@ -85,6 +85,8 @@ struct iommu_pool {
 struct iommu_table {
 	unsigned long  it_busno;     /* Bus number this table belongs to */
 	unsigned long  it_size;      /* Size of iommu table in entries */
+	unsigned long  it_indirect_levels;
+	unsigned long  it_level_size;
 	unsigned long  it_offset;    /* Offset into global table */
 	unsigned long  it_base;      /* mapped address of tce table */
 	unsigned long  it_index;     /* which iommu table this is */
@@ -132,6 +134,8 @@ extern struct iommu_table *iommu_init_table(struct iommu_table * tbl,
 					    struct iommu_table_ops *ops);
 
 #define POWERPC_IOMMU_MAX_TABLES	1
+
+#define POWERPC_IOMMU_DEFAULT_LEVELS	1
 
 struct powerpc_iommu;
 
