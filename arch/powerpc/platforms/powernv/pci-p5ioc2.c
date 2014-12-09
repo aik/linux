@@ -83,12 +83,18 @@ static void pnv_pci_init_p5ioc2_msis(struct pnv_phb *phb)
 static void pnv_pci_init_p5ioc2_msis(struct pnv_phb *phb) { }
 #endif /* CONFIG_PCI_MSI */
 
+static struct iommu_table_ops pnv_p5ioc2_iommu_ops = {
+	.set = pnv_tce_build,
+	.clear = pnv_tce_free,
+	.get = pnv_tce_get,
+};
+
 static void pnv_pci_p5ioc2_dma_dev_setup(struct pnv_phb *phb,
 					 struct pci_dev *pdev)
 {
 	if (phb->p5ioc2.iommu.tables[0].it_map == NULL) {
 		iommu_init_table(&phb->p5ioc2.iommu.tables[0], phb->hose->node,
-				&pnv_iommu_ops);
+				&pnv_p5ioc2_iommu_ops);
 		iommu_register_group(&phb->p5ioc2.iommu,
 				pci_domain_nr(phb->hose->bus), phb->opal_id);
 	}
