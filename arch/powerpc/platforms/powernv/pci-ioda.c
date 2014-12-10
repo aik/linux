@@ -1358,10 +1358,12 @@ static __be64 *pnv_alloc_tce_table(int nid,
 	return addr;
 }
 
-static long pnv_pci_ioda2_create_table(struct pnv_ioda_pe *pe,
+static long pnv_pci_ioda2_create_table(struct powerpc_iommu *iommu,
 		__u32 page_shift, __u32 window_shift, __u32 levels,
 		struct iommu_table *tbl)
 {
+	struct pnv_ioda_pe *pe = container_of(iommu, struct pnv_ioda_pe,
+						iommu);
 	int nid = pe->phb->hose->node;
 	void *addr;
 	unsigned long tce_table_size;
@@ -1416,9 +1418,11 @@ static void pnv_pci_ioda2_free_table(struct iommu_table *tbl)
 	memset(tbl, 0, sizeof(struct iommu_table));
 }
 
-static long pnv_pci_ioda2_set_window(struct pnv_ioda_pe *pe,
+static long pnv_pci_ioda2_set_window(struct powerpc_iommu *iommu,
 		struct iommu_table *tbl)
 {
+	struct pnv_ioda_pe *pe = container_of(iommu, struct pnv_ioda_pe,
+						iommu);
 	struct pnv_phb *phb = pe->phb;
 	const __be64 *swinvp;
 	int64_t rc;
@@ -1548,12 +1552,11 @@ static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
 
 	/* The PE will reserve all possible 32-bits space */
 	pe->tce32_seg = 0;
-
 	end = (1 << ilog2(phb->ioda.m32_pci_base));
 	pe_info(pe, "Setting up 32-bit TCE table at 0..%08x\n",
 		end);
 
-	rc = pnv_pci_ioda2_create_table(pe, IOMMU_PAGE_SHIFT_4K,
+	rc = pnv_pci_ioda2_create_table(&pe->iommu, IOMMU_PAGE_SHIFT_4K,
 			ilog2(phb->ioda.m32_pci_base),
 			POWERPC_IOMMU_DEFAULT_LEVELS, tbl);
 	if (rc) {
@@ -1566,7 +1569,7 @@ static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
 	pe->iommu.tables[0].it_iommu = &pe->iommu;
 	pe->iommu.ops = &pnv_pci_ioda2_ops;
 
-	rc = pnv_pci_ioda2_set_window(pe, tbl);
+	rc = pnv_pci_ioda2_set_window(&pe->iommu, tbl);
 	if (rc) {
 		pe_err(pe, "Failed to configure 32-bit TCE table,"
 		       " err %ld\n", rc);
