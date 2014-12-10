@@ -133,7 +133,7 @@ extern struct iommu_table *iommu_init_table(struct iommu_table * tbl,
 					    int nid,
 					    struct iommu_table_ops *ops);
 
-#define POWERPC_IOMMU_MAX_TABLES	1
+#define POWERPC_IOMMU_MAX_TABLES	2
 
 #define POWERPC_IOMMU_DEFAULT_LEVELS	1
 
