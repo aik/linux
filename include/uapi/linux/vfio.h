@@ -543,6 +543,12 @@ struct vfio_iommu_spapr_tce_remove {
 };
 #define VFIO_IOMMU_SPAPR_TCE_REMOVE	_IO(VFIO_TYPE, VFIO_BASE + 20)
 
+struct vfio_iommu_spapr_tce_reset {
+	__u32 argsz;
+	__u32 flags;
+};
+#define VFIO_IOMMU_SPAPR_TCE_RESET	_IO(VFIO_TYPE, VFIO_BASE + 22)
+
 /* ***************************************************************** */
 
 #endif /* _UAPIVFIO_H */
