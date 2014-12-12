@@ -384,27 +384,35 @@ static void tce_iommu_release(void *iommu_data)
 	kfree(container);
 }
 
+static void tce_iommu_unuse_page(unsigned long oldtce, bool do_put)
+{
+	struct page *page;
+
+	if (!(oldtce & (TCE_PCI_READ | TCE_PCI_WRITE)))
+		return;
+
+	page = pfn_to_page(__pa(oldtce) >> PAGE_SHIFT);
+	if (oldtce & TCE_PCI_WRITE)
+		SetPageDirty(page);
+	if (do_put)
+		put_page(page);
+}
+
 static int tce_iommu_clear(struct tce_container *container,
 		struct iommu_table *tbl,
 		unsigned long entry, unsigned long pages)
 {
+	long ret;
 	unsigned long oldtce;
-	struct page *page;
 	const bool do_put = !tce_preregistered(container);
 
 	for ( ; pages; --pages, ++entry) {
-		oldtce = iommu_clear_tce(tbl, entry);
-		if (!oldtce)
+		oldtce = 0;
+		ret = iommu_tce_xchg(tbl, entry, 0, &oldtce, DMA_NONE);
+		if (ret)
 			continue;
 
-		page = pfn_to_page(oldtce >> PAGE_SHIFT);
-		WARN_ON(!page);
-		if (page) {
-			if (oldtce & TCE_PCI_WRITE)
-				SetPageDirty(page);
-			if (do_put)
-				put_page(page);
-		}
+		tce_iommu_unuse_page(oldtce, do_put);
 	}
 
 	return 0;
@@ -428,7 +436,7 @@ static long tce_iommu_build(struct tce_container *container,
 {
 	long i, ret = 0, shift;
 	struct page *page = NULL;
-	unsigned long hva;
+	unsigned long hva, oldtce;
 	enum dma_data_direction direction = tce_iommu_direction(tce);
 	const bool do_get = !tce_preregistered(container);
 
@@ -454,17 +462,18 @@ static long tce_iommu_build(struct tce_container *container,
 
 		hva = (unsigned long) page_address(page) +
 			(tce & IOMMU_PAGE_MASK(tbl) & ~PAGE_MASK);
+		oldtce = 0;
 
-		ret = iommu_tce_build(tbl, entry + 1, hva, direction);
+		ret = iommu_tce_xchg(tbl, entry + i, hva, &oldtce, direction);
 		if (ret) {
 			put_page(page);
 			pr_err("iommu_tce: %s failed ioba=%lx, tce=%lx, ret=%ld\n",
 					__func__, entry << tbl->it_page_shift,
 					tce, ret);
 			break;
-		} else if (!do_get)
-			/* The page is pinned by a container */
-			put_page(page);
+		}
+
+		tce_iommu_unuse_page(oldtce, do_get);
 
 		tce += IOMMU_PAGE_SIZE(tbl);
 	}

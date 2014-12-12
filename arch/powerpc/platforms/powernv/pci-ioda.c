@@ -1164,6 +1164,21 @@ static int pnv_ioda2_tce_build_vm(struct iommu_table *tbl, long index,
 	return ret;
 }
 
+static int pnv_ioda2_tce_xchg_vm(struct iommu_table *tbl, long index,
+		long npages, unsigned long uaddr, unsigned long *old_tces,
+		enum dma_data_direction direction,
+		struct dma_attrs *attrs)
+{
+	long ret = pnv_tce_xchg(tbl, index, npages, uaddr, old_tces, direction,
+			attrs);
+
+	if (!ret && (tbl->it_type &
+			(TCE_PCI_SWINV_CREATE | TCE_PCI_SWINV_FREE)))
+		pnv_pci_ioda2_tce_invalidate(tbl, index, npages, false);
+
+	return ret;
+}
+
 static void pnv_ioda2_tce_free_vm(struct iommu_table *tbl, long index,
 		long npages)
 {
@@ -1175,6 +1190,7 @@ static void pnv_ioda2_tce_free_vm(struct iommu_table *tbl, long index,
 
 static struct iommu_table_ops pnv_ioda2_iommu_ops = {
 	.set = pnv_ioda2_tce_build_vm,
+	.exchange = pnv_ioda2_tce_xchg_vm,
 	.clear = pnv_ioda2_tce_free_vm,
 	.get = pnv_tce_get,
 };

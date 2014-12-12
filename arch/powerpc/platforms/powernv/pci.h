@@ -220,6 +220,10 @@ extern int pnv_tce_build(struct iommu_table *tbl, long index, long npages,
 		unsigned long uaddr, enum dma_data_direction direction,
 		struct dma_attrs *attrs);
 extern void pnv_tce_free(struct iommu_table *tbl, long index, long npages);
+extern int pnv_tce_xchg(struct iommu_table *tbl, long index,
+		long npages, unsigned long uaddr, unsigned long *old_tces,
+		enum dma_data_direction direction,
+		struct dma_attrs *attrs);
 extern unsigned long pnv_tce_get(struct iommu_table *tbl, long index);
 extern struct iommu_table_ops pnv_ioda1_iommu_ops;
 
