@@ -555,7 +555,7 @@ static long tce_iommu_ioctl(void *iommu_data,
 				 unsigned int cmd, unsigned long arg)
 {
 	struct tce_container *container = iommu_data;
-	unsigned long minsz;
+	unsigned long minsz, ddwsz;
 	long ret;
 
 	switch (cmd) {
@@ -575,7 +575,6 @@ static long tce_iommu_ioctl(void *iommu_data,
 		struct vfio_iommu_spapr_tce_info info;
 		struct tce_iommu_group *tcegrp;
 		struct powerpc_iommu *iommu;
-		__u32 windows_supported = 0, levels = 0;
 
 		if (!tce_is_any_group(container))
 			return -ENXIO;
@@ -599,12 +598,17 @@ static long tce_iommu_ioctl(void *iommu_data,
 
 		ret = iommu->ops->query(iommu, &info.dma32_window_start,
 				&info.dma32_window_size,
-				&windows_supported,
-				&levels,
+				&info.windows_supported,
+				&info.levels,
 				&info.flags);
 		if (ret)
 			return ret;
 
+		ddwsz = offsetofend(struct vfio_iommu_spapr_tce_info,
+				levels);
+
+		if (info.argsz == ddwsz)
+			minsz = ddwsz;
 
 		if (copy_to_user((void __user *)arg, &info, minsz))
 			return -EFAULT;
@@ -770,6 +774,120 @@ static long tce_iommu_ioctl(void *iommu_data,
 		return ret;
 	}
 
+	case VFIO_IOMMU_SPAPR_TCE_CREATE: {
+		struct vfio_iommu_spapr_tce_create create;
+		struct powerpc_iommu *iommu;
+		struct tce_iommu_group *tcegrp;
+
+		if (!tce_is_any_mem(container))
+			return -ENXIO;
+
+		minsz = offsetofend(struct vfio_iommu_spapr_tce_create,
+				start_addr);
+
+		if (copy_from_user(&create, (void __user *)arg, minsz))
+			return -EFAULT;
+
+		if (create.argsz < minsz)
+			return -EINVAL;
+
+		if (create.flags)
+			return -EINVAL;
+
+		if (container->num > 1)
+			return -ENOSYS;
+
+		tcegrp = list_first_entry(&container->group_list,
+				struct tce_iommu_group, next);
+		iommu = iommu_group_get_iommudata(tcegrp->grp);
+
+		ret = iommu->ops->create_table(iommu, container->num,
+				create.page_shift, create.window_shift,
+				create.levels,
+				&container->tables[container->num]);
+		if (ret)
+			return ret;
+
+		list_for_each_entry(tcegrp, &container->group_list, next) {
+			struct powerpc_iommu *iommutmp =
+					iommu_group_get_iommudata(tcegrp->grp);
+
+			if (WARN_ON_ONCE(iommutmp->ops != iommu->ops))
+				return -EFAULT;
+
+			ret = iommu->ops->set_window(iommutmp, container->num,
+					&container->tables[container->num]);
+			if (ret)
+				return ret;
+		}
+
+		create.start_addr =
+				container->tables[container->num].it_offset <<
+				container->tables[container->num].it_page_shift;
+
+		if (copy_to_user((void __user *)arg, &create, minsz)) {
+			return -EFAULT;
+		}
+
+		mutex_lock(&container->lock);
+		++container->num;
+		mutex_unlock(&container->lock);
+
+		return ret;
+	}
+	case VFIO_IOMMU_SPAPR_TCE_REMOVE: {
+		struct vfio_iommu_spapr_tce_remove remove;
+		struct powerpc_iommu *iommu = NULL;
+		struct iommu_table *tbl;
+		struct tce_iommu_group *tcegrp;
+
+		if (!tce_is_any_mem(container))
+			return -ENXIO;
+
+		minsz = offsetofend(struct vfio_iommu_spapr_tce_remove,
+				start_addr);
+
+		if (copy_from_user(&remove, (void __user *)arg, minsz))
+			return -EFAULT;
+
+		if (remove.argsz < minsz)
+			return -EINVAL;
+
+		if (remove.flags)
+			return -EINVAL;
+
+		if (!container->num)
+			return -EINVAL;
+
+		tbl = spapr_tce_find_table(container, remove.start_addr);
+		if (!tbl)
+			return -EINVAL;
+
+		/* Detach windows from IOMMUs */
+		mutex_lock(&container->lock);
+
+		--container->num;
+
+		/* Detach groups from IOMMUs */
+		list_for_each_entry(tcegrp, &container->group_list, next) {
+			iommu = iommu_group_get_iommudata(tcegrp->grp);
+			if (container->tables[container->num].it_size)
+				iommu->ops->unset_window(iommu, container->num);
+		}
+
+		/* Free table */
+		tcegrp = list_first_entry(&container->group_list,
+				struct tce_iommu_group, next);
+		iommu = iommu_group_get_iommudata(tcegrp->grp);
+
+		tce_iommu_clear(container, tbl,
+				tbl->it_offset, tbl->it_size);
+		iommu->ops->free_table(tbl);
+
+		mutex_unlock(&container->lock);
+
+		return 0;
+	}
 	}
 
 	return -ENOTTY;
