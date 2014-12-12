@@ -1293,6 +1293,61 @@ static void pnv_pci_ioda_setup_dma_pe(struct pnv_phb *phb,
 		__free_pages(tce_mem, get_order(TCE32_TABLE_SIZE * segs));
 }
 
+static long pnv_pci_ioda2_create_table(struct pnv_ioda_pe *pe,
+		__u32 page_shift, __u32 window_shift,
+		struct iommu_table *tbl)
+{
+	int nid = pe->phb->hose->node;
+	struct page *tce_mem = NULL;
+	void *addr;
+	unsigned long tce_table_size;
+	int64_t rc;
+	unsigned order;
+
+	if ((page_shift != 12) && (page_shift != 16) && (page_shift != 24))
+		return -EINVAL;
+
+	if ((1ULL << window_shift) > memory_hotplug_max())
+		return -EINVAL;
+
+	tce_table_size = (1ULL << (window_shift - page_shift)) * 8;
+	tce_table_size = max(0x1000UL, tce_table_size);
+
+	/* Allocate TCE table */
+	order = get_order(tce_table_size);
+
+	tce_mem = alloc_pages_node(nid, GFP_KERNEL, order);
+	if (!tce_mem) {
+		pr_err("Failed to allocate a TCE memory, order=%d\n", order);
+		rc = -ENOMEM;
+		goto fail;
+	}
+	addr = page_address(tce_mem);
+	memset(addr, 0, tce_table_size);
+
+	/* Setup linux iommu table */
+	pnv_pci_setup_iommu_table(tbl, addr, tce_table_size, 0,
+			page_shift);
+
+	iommu_init_table(tbl, nid, &pnv_ioda2_iommu_ops);
+
+	return 0;
+fail:
+	if (tce_mem)
+		__free_pages(tce_mem, get_order(tce_table_size));
+
+	return rc;
+}
+
+static void pnv_pci_ioda2_free_table(struct iommu_table *tbl)
+{
+	if (!tbl->it_size)
+		return;
+
+	free_pages(tbl->it_base, get_order(tbl->it_size << 3));
+	memset(tbl, 0, sizeof(struct iommu_table));
+}
+
 static void pnv_pci_ioda2_set_bypass(struct pnv_ioda_pe *pe, bool enable)
 {
 	uint16_t window_id = (pe->pe_number << 1 ) + 1;
@@ -1359,11 +1414,9 @@ static struct powerpc_iommu_ops pnv_pci_ioda2_ops = {
 static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
 				       struct pnv_ioda_pe *pe)
 {
-	struct page *tce_mem = NULL;
-	void *addr;
 	const __be64 *swinvp;
-	struct iommu_table *tbl;
-	unsigned int tce_table_size, end;
+	unsigned int end;
+	struct iommu_table *tbl = &pe->iommu.tables[0];
 	int64_t rc;
 
 	/* We shouldn't already have a 32-bit DMA associated */
@@ -1372,31 +1425,21 @@ static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
 
 	/* The PE will reserve all possible 32-bits space */
 	pe->tce32_seg = 0;
+
 	end = (1 << ilog2(phb->ioda.m32_pci_base));
-	tce_table_size = (end / 0x1000) * 8;
 	pe_info(pe, "Setting up 32-bit TCE table at 0..%08x\n",
 		end);
 
-	/* Allocate TCE table */
-	tce_mem = alloc_pages_node(phb->hose->node, GFP_KERNEL,
-				   get_order(tce_table_size));
-	if (!tce_mem) {
-		pe_err(pe, "Failed to allocate a 32-bit TCE memory\n");
-		goto fail;
+	rc = pnv_pci_ioda2_create_table(pe, IOMMU_PAGE_SHIFT_4K,
+			ilog2(phb->ioda.m32_pci_base), tbl);
+	if (rc) {
+		pe_err(pe, "Failed to create 32-bit TCE table, err %ld", rc);
+		return;
 	}
-	addr = page_address(tce_mem);
-	memset(addr, 0, tce_table_size);
 
 	/* Setup iommu */
 	pe->iommu.num = 1;
 	pe->iommu.tables[0].it_iommu = &pe->iommu;
-
-	/* Setup linux iommu table */
-	tbl = &pe->iommu.tables[0];
-	pnv_pci_setup_iommu_table(tbl, addr, tce_table_size, 0,
-			IOMMU_PAGE_SHIFT_4K);
-
-	iommu_init_table(tbl, phb->hose->node, &pnv_ioda2_iommu_ops);
 	pe->iommu.ops = &pnv_pci_ioda2_ops;
 
 	/*
@@ -1441,8 +1484,7 @@ static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
 fail:
 	if (pe->tce32_seg >= 0)
 		pe->tce32_seg = -1;
-	if (tce_mem)
-		__free_pages(tce_mem, get_order(tce_table_size));
+	pnv_pci_ioda2_free_table(tbl);
 }
 
 static void pnv_ioda_setup_dma(struct pnv_phb *phb)
