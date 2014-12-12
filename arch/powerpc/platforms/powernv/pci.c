@@ -628,6 +628,28 @@ int pnv_tce_build(struct iommu_table *tbl, long index, long npages,
 	return 0;
 }
 
+int pnv_tce_xchg(struct iommu_table *tbl, long index,
+		long npages, unsigned long uaddr, unsigned long *old_tces,
+		enum dma_data_direction direction,
+		struct dma_attrs *attrs)
+{
+	u64 proto_tce = pnv_dmadir_to_flags(direction);
+	u64 rpn = __pa(uaddr) >> tbl->it_page_shift;
+	long i;
+
+	for (i = 0; i < npages; i++) {
+		unsigned long newtce = proto_tce |
+				((rpn + i) << tbl->it_page_shift);
+		unsigned long idx = index - tbl->it_offset + i;
+		unsigned long oldtce = xchg(pnv_tce(tbl, idx),
+				cpu_to_be64(newtce));
+
+		old_tces[i] = (unsigned long) __va(be64_to_cpu(oldtce));
+	}
+
+	return 0;
+}
+
 void pnv_tce_free(struct iommu_table *tbl, long index, long npages)
 {
 	long i;
