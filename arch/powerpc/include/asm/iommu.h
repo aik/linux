@@ -147,6 +147,36 @@ struct powerpc_iommu_ops {
 	 */
 	void (*set_ownership)(struct powerpc_iommu *iommu,
 			bool enable);
+
+	/* Page size flags for ibm,query-pe-dma-window */
+#define DDW_PGSIZE_4K           0x01
+#define DDW_PGSIZE_64K          0x02
+#define DDW_PGSIZE_16M          0x04
+#define DDW_PGSIZE_32M          0x08
+#define DDW_PGSIZE_64M          0x10
+#define DDW_PGSIZE_128M         0x20
+#define DDW_PGSIZE_256M         0x40
+#define DDW_PGSIZE_16G          0x80
+#define DDW_PGSIZE_MASK         0xFF
+
+	long (*query)(struct powerpc_iommu *iommu,
+			__u32 *tce32_start,
+			__u32 *tce32_size,
+			__u32 *windows_supported,
+			__u32 *levels,
+			__u32 *flags);
+	long (*create_table)(struct powerpc_iommu *iommu,
+			int num,
+			__u32 page_shift,
+			__u32 window_shift,
+			__u32 levels,
+			struct iommu_table *tbl);
+	long (*set_window)(struct powerpc_iommu *iommu,
+			int num,
+			struct iommu_table *tblnew);
+	long (*unset_window)(struct powerpc_iommu *iommu,
+			int num);
+	void (*free_table)(struct iommu_table *tbl);
 };
 
 struct powerpc_iommu {
