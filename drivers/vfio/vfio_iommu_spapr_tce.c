@@ -86,7 +86,161 @@ struct tce_container {
 	struct mutex lock;
 	struct iommu_table *tbl;
 	bool enabled;
+	struct list_head mem_list;
 };
+
+struct tce_memory {
+	struct list_head next;
+	struct rcu_head rcu;
+	__u64 vaddr;
+	__u64 size;
+};
+
+static void tce_unpin_pages(__u64 vaddr, __u64 size)
+{
+	__u64 off;
+	struct page *page = NULL;
+
+	if (!current || !current->mm)
+		return; /* process exited */
+
+	for (off = 0; off < size; off += PAGE_SIZE) {
+		if (1 != get_user_pages_fast(vaddr + off,
+					1/* pages */, 1/* iswrite */,
+					&page))
+			continue;
+
+		put_page(page);
+		put_page(page);
+	}
+}
+
+static void release_tce_memory(struct rcu_head *head)
+{
+	struct tce_memory *mem = container_of(head, struct tce_memory, rcu);
+	kfree(mem);
+}
+
+static void tce_do_unregister_pages(struct tce_memory *mem)
+{
+	tce_unpin_pages(mem->vaddr, mem->size);
+	decrement_locked_vm(mem->size);
+	list_del_rcu(&mem->next);
+	call_rcu_sched(&mem->rcu, release_tce_memory);
+}
+
+static long tce_unregister_pages(struct tce_container *container,
+		__u64 vaddr, __u64 size)
+{
+	struct tce_memory *mem, *memtmp;
+
+	if (container->enabled)
+		return -EBUSY;
+
+	if ((vaddr & ~PAGE_MASK) || (size & ~PAGE_MASK))
+		return -EINVAL;
+
+	list_for_each_entry_safe(mem, memtmp, &container->mem_list, next) {
+		if ((mem->vaddr == vaddr) && (mem->size == size)) {
+			tce_do_unregister_pages(mem);
+			return 0;
+		}
+	}
+
+	return -ENOENT;
+}
+
+static long tce_pin_pages(__u64 vaddr, __u64 size)
+{
+	__u64 off;
+	struct page *page = NULL;
+
+	for (off = 0; off < size; off += PAGE_SIZE) {
+		if (1 != get_user_pages_fast(vaddr + off,
+					1/* pages */, 1/* iswrite */, &page)) {
+			tce_unpin_pages(vaddr, off);
+			return -EFAULT;
+		}
+	}
+
+	return 0;
+}
+
+static long tce_register_pages(struct tce_container *container,
+		__u64 vaddr, __u64 size)
+{
+	long ret;
+	struct tce_memory *mem;
+
+	if (container->enabled)
+		return -EBUSY;
+
+	if ((vaddr & ~PAGE_MASK) || (size & ~PAGE_MASK) ||
+			((vaddr + size) < vaddr))
+		return -EINVAL;
+
+	/* Any overlap with registered chunks? */
+	rcu_read_lock();
+	list_for_each_entry_rcu(mem, &container->mem_list, next) {
+		if ((mem->vaddr < (vaddr + size)) &&
+				(vaddr < (mem->vaddr + mem->size))) {
+			ret = -EBUSY;
+			goto unlock_exit;
+		}
+	}
+
+	ret = try_increment_locked_vm(size >> PAGE_SHIFT);
+	if (ret)
+		goto unlock_exit;
+
+	mem = kzalloc(sizeof(*mem), GFP_KERNEL);
+	if (!mem)
+		goto unlock_exit;
+
+	if (tce_pin_pages(vaddr, size))
+		goto free_exit;
+
+	mem->vaddr = vaddr;
+	mem->size = size;
+
+	list_add_rcu(&mem->next, &container->mem_list);
+	rcu_read_unlock();
+
+	return 0;
+
+free_exit:
+	kfree(mem);
+
+unlock_exit:
+	decrement_locked_vm(size >> PAGE_SHIFT);
+	rcu_read_unlock();
+
+	return ret;
+}
+
+static inline bool tce_preregistered(struct tce_container *container)
+{
+	return !list_empty(&container->mem_list);
+}
+
+static bool tce_pinned(struct tce_container *container,
+		__u64 vaddr, __u64 size)
+{
+	struct tce_memory *mem;
+	bool ret = false;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(mem, &container->mem_list, next) {
+		if ((mem->vaddr <= vaddr) &&
+				(vaddr + size <= mem->vaddr + mem->size)) {
+			ret = true;
+			break;
+		}
+	}
+	rcu_read_unlock();
+
+	return ret;
+}
 
 static int tce_iommu_enable(struct tce_container *container)
 {
@@ -126,9 +280,12 @@ static int tce_iommu_enable(struct tce_container *container)
 	 * as this information is only available from KVM and VFIO is
 	 * KVM agnostic.
 	 */
-	ret = try_increment_locked_vm(IOMMU_TABLE_PAGES(container->tbl));
-	if (ret)
-		return ret;
+	if (!tce_preregistered(container)) {
+		ret = try_increment_locked_vm(
+				IOMMU_TABLE_PAGES(container->tbl));
+		if (ret)
+			return ret;
+	}
 
 	container->enabled = true;
 
@@ -145,7 +302,8 @@ static void tce_iommu_disable(struct tce_container *container)
 	if (!container->tbl || !current->mm)
 		return;
 
-	decrement_locked_vm(IOMMU_TABLE_PAGES(container->tbl));
+	if (!tce_preregistered(container))
+		decrement_locked_vm(IOMMU_TABLE_PAGES(container->tbl));
 }
 
 static void *tce_iommu_open(unsigned long arg)
@@ -162,6 +320,7 @@ static void *tce_iommu_open(unsigned long arg)
 		return ERR_PTR(-ENOMEM);
 
 	mutex_init(&container->lock);
+	INIT_LIST_HEAD_RCU(&container->mem_list);
 
 	return container;
 }
@@ -169,12 +328,16 @@ static void *tce_iommu_open(unsigned long arg)
 static void tce_iommu_release(void *iommu_data)
 {
 	struct tce_container *container = iommu_data;
+	struct tce_memory *mem, *memtmp;
 
 	WARN_ON(container->tbl && !container->tbl->it_group);
 	tce_iommu_disable(container);
 
 	if (container->tbl && container->tbl->it_group)
 		tce_iommu_detach_group(iommu_data, container->tbl->it_group);
+
+	list_for_each_entry_safe(mem, memtmp, &container->mem_list, next)
+		tce_do_unregister_pages(mem);
 
 	mutex_destroy(&container->lock);
 
@@ -187,6 +350,7 @@ static int tce_iommu_clear(struct tce_container *container,
 {
 	unsigned long oldtce;
 	struct page *page;
+	const bool do_put = !tce_preregistered(container);
 
 	for ( ; pages; --pages, ++entry) {
 		oldtce = iommu_clear_tce(tbl, entry);
@@ -198,7 +362,8 @@ static int tce_iommu_clear(struct tce_container *container,
 		if (page) {
 			if (oldtce & TCE_PCI_WRITE)
 				SetPageDirty(page);
-			put_page(page);
+			if (do_put)
+				put_page(page);
 		}
 	}
 
@@ -225,6 +390,7 @@ static long tce_iommu_build(struct tce_container *container,
 	struct page *page = NULL;
 	unsigned long hva;
 	enum dma_data_direction direction = tce_iommu_direction(tce);
+	const bool do_get = !tce_preregistered(container);
 
 	for (i = 0; i < pages; ++i) {
 		ret = get_user_pages_fast(tce & PAGE_MASK, 1,
@@ -256,7 +422,10 @@ static long tce_iommu_build(struct tce_container *container,
 					__func__, entry << tbl->it_page_shift,
 					tce, ret);
 			break;
-		}
+		} else if (!do_get)
+			/* The page is pinned by a container */
+			put_page(page);
+
 		tce += IOMMU_PAGE_SIZE(tbl);
 	}
 
@@ -348,6 +517,11 @@ static long tce_iommu_ioctl(void *iommu_data,
 		if (ret)
 			return ret;
 
+		/* If any memory is pinned, only allow pages from that region */
+		if (tce_preregistered(container) &&
+				!tce_pinned(container, param.vaddr, param.size))
+			return -EPERM;
+
 		ret = tce_iommu_build(container, tbl,
 				param.iova >> tbl->it_page_shift,
 				tce, param.size >> tbl->it_page_shift);
@@ -390,6 +564,50 @@ static long tce_iommu_ioctl(void *iommu_data,
 		iommu_flush_tce(tbl);
 
 		return ret;
+	}
+	case VFIO_IOMMU_REGISTER_MEMORY: {
+		struct vfio_iommu_type1_register_memory param;
+
+		minsz = offsetofend(struct vfio_iommu_type1_register_memory,
+				size);
+
+		if (copy_from_user(&param, (void __user *)arg, minsz))
+			return -EFAULT;
+
+		if (param.argsz < minsz)
+			return -EINVAL;
+
+		/* No flag is supported now */
+		if (param.flags)
+			return -EINVAL;
+
+		mutex_lock(&container->lock);
+		ret = tce_register_pages(container, param.vaddr, param.size);
+		mutex_unlock(&container->lock);
+
+		return ret;
+	}
+	case VFIO_IOMMU_UNREGISTER_MEMORY: {
+		struct vfio_iommu_type1_unregister_memory param;
+
+		minsz = offsetofend(struct vfio_iommu_type1_unregister_memory,
+				size);
+
+		if (copy_from_user(&param, (void __user *)arg, minsz))
+			return -EFAULT;
+
+		if (param.argsz < minsz)
+			return -EINVAL;
+
+		/* No flag is supported now */
+		if (param.flags)
+			return -EINVAL;
+
+		mutex_lock(&container->lock);
+		tce_unregister_pages(container, param.vaddr, param.size);
+		mutex_unlock(&container->lock);
+
+		return 0;
 	}
 	case VFIO_IOMMU_ENABLE:
 		mutex_lock(&container->lock);
