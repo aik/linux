@@ -187,7 +187,7 @@ static long tce_iommu_build(struct tce_container *container,
 		struct iommu_table *tbl,
 		unsigned long entry, unsigned long tce, unsigned long pages)
 {
-	long i, ret = 0;
+	long i, ret = 0, shift;
 	struct page *page = NULL;
 	unsigned long hva;
 	enum dma_data_direction direction = tce_iommu_direction(tce);
@@ -201,6 +201,17 @@ static long tce_iommu_build(struct tce_container *container,
 			ret = -EFAULT;
 			break;
 		}
+		/*
+		 * Check that the TCE table granularity is not bigger than the size of
+		 * a page we just found. Otherwise the hardware can get access to
+		 * a bigger memory chunk that it should.
+		 */
+		shift = PAGE_SHIFT + compound_order(compound_head(page));
+		if (shift < tbl->it_page_shift) {
+			ret = -EFAULT;
+			break;
+		}
+
 		hva = (unsigned long) page_address(page) +
 			(tce & IOMMU_PAGE_MASK(tbl) & ~PAGE_MASK);
 
