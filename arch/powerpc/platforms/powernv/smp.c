@@ -168,8 +168,7 @@ static void pnv_smp_cpu_kill_self(void)
 	mtspr(SPRN_LPCR, mfspr(SPRN_LPCR) & ~(u64)LPCR_PECE1);
 	while (!generic_check_cpu_restart(cpu)) {
 		ppc64_runlatch_off();
-		if ((idle_states & OPAL_PM_SLEEP_ENABLED) ||
-				(idle_states & OPAL_PM_SLEEP_ENABLED_ER1))
+		if (idle_states & OPAL_PM_SLEEP_ENABLED)
 			srr1 = power7_sleep();
 		else
 			srr1 = power7_nap(1);
