@@ -52,7 +52,7 @@
 #define PNV_IODA1_M64_SEGS	8	/* Segments per M64 BAR	*/
 #define PNV_IODA1_DMA32_SEGSIZE	0x10000000
 
-#define POWERNV_IOMMU_DEFAULT_LEVELS	1
+#define POWERNV_IOMMU_DEFAULT_LEVELS	4
 #define POWERNV_IOMMU_MAX_LEVELS	5
 
 static void pnv_pci_ioda2_table_free_pages(struct iommu_table *tbl);
