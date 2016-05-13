@@ -1062,6 +1062,26 @@ void iommu_release_ownership(struct iommu_table *tbl)
 }
 EXPORT_SYMBOL_GPL(iommu_release_ownership);
 
+long iommu_tce_xchg_rm(struct iommu_table *tbl, unsigned long entry,
+		unsigned long *hpa, enum dma_data_direction *direction)
+{
+	long ret;
+
+	ret = tbl->it_ops->exchange_rm(tbl, entry, hpa, direction);
+
+	if (!ret && ((*direction == DMA_FROM_DEVICE) ||
+			(*direction == DMA_BIDIRECTIONAL))) {
+		struct page *pg = realmode_pfn_to_page(*hpa >> PAGE_SHIFT);
+
+		WARN_ON_ONCE(!pg);
+		if (pg)
+			SetPageDirty(pg);
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(iommu_tce_xchg_rm);
+
 int iommu_add_device(struct device *dev)
 {
 	struct iommu_table *tbl;
