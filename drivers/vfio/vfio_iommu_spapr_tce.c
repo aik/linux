@@ -1295,6 +1295,8 @@ struct iommu_table *vfio_container_spapr_tce_get_table(
 	container->table_release = release;
 	container->opaque = opaque;
 
+	iommu_table_get(tbl);
+
 	return tbl;
 }
 EXPORT_SYMBOL_GPL(vfio_container_spapr_tce_get_table);

@@ -342,6 +342,18 @@ struct kvm_create_spapr_tce_64 {
 	__u64 size;	/* in pages */
 };
 
+#define KVM_SPAPR_TCE			(':')
+#define KVM_SPAPR_TCE_VFIO_SET		_IOW(KVM_SPAPR_TCE,  0x00, \
+					     struct kvm_spapr_tce_vfio)
+#define KVM_SPAPR_TCE_VFIO_UNSET	_IOW(KVM_SPAPR_TCE,  0x01, \
+					     struct kvm_spapr_tce_vfio)
+
+struct kvm_spapr_tce_vfio {
+	__u32 argsz;
+	__u32 flags;
+	__u32 container_fd;
+};
+
 /* for KVM_ALLOCATE_RMA */
 struct kvm_allocate_rma {
 	__u64 rma_size;
