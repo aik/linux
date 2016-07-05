@@ -91,6 +91,13 @@ extern void vfio_group_put_external_user(struct vfio_group *group);
 extern int vfio_external_user_iommu_id(struct vfio_group *group);
 extern long vfio_external_check_extension(struct vfio_group *group,
 					  unsigned long arg);
+extern struct vfio_container *vfio_container_get_ext(struct file *filep,
+						     void **iommu_data);
+extern void vfio_container_put_ext(struct vfio_container *container);
+extern struct iommu_table *vfio_container_spapr_tce_get_table(
+		void *iommu_data, u64 offset,
+		void (*release)(void *opaque, struct iommu_table *tbl),
+		void *opaque);
 
 /*
  * Sub-module helpers

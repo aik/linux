@@ -100,6 +100,8 @@ struct tce_container {
 	unsigned long locked_pages;
 	struct iommu_table *tables[IOMMU_TABLE_GROUP_MAX_TABLES];
 	struct list_head group_list;
+	void (*table_release)(void *opaque, struct iommu_table *tbl);
+	void *opaque;
 };
 
 static long tce_iommu_unregister_pages(struct tce_container *container,
@@ -326,7 +328,8 @@ static void *tce_iommu_open(unsigned long arg)
 static int tce_iommu_clear(struct tce_container *container,
 		struct iommu_table *tbl,
 		unsigned long entry, unsigned long pages);
-static void tce_iommu_free_table(struct iommu_table *tbl);
+static void tce_iommu_free_table(struct tce_container *container,
+		struct iommu_table *tbl);
 
 static void tce_iommu_release(void *iommu_data)
 {
@@ -351,7 +354,7 @@ static void tce_iommu_release(void *iommu_data)
 			continue;
 
 		tce_iommu_clear(container, tbl, tbl->it_offset, tbl->it_size);
-		tce_iommu_free_table(tbl);
+		tce_iommu_free_table(container, tbl);
 	}
 
 	tce_iommu_disable(container);
@@ -594,9 +597,13 @@ static long tce_iommu_create_table(struct tce_container *container,
 	return ret;
 }
 
-static void tce_iommu_free_table(struct iommu_table *tbl)
+static void tce_iommu_free_table(struct tce_container *container,
+		struct iommu_table *tbl)
 {
 	unsigned long pages = tbl->it_allocated_size >> PAGE_SHIFT;
+
+	if (container->table_release)
+		container->table_release(container->opaque, tbl);
 
 	tce_iommu_userspace_view_free(tbl);
 	iommu_table_put(tbl);
@@ -663,7 +670,7 @@ unset_exit:
 		table_group = iommu_group_get_iommudata(tcegrp->grp);
 		table_group->ops->unset_window(table_group, num);
 	}
-	tce_iommu_free_table(tbl);
+	tce_iommu_free_table(container, tbl);
 
 	return ret;
 }
@@ -701,7 +708,7 @@ static long tce_iommu_remove_window(struct tce_container *container,
 
 	/* Free table */
 	tce_iommu_clear(container, tbl, tbl->it_offset, tbl->it_size);
-	tce_iommu_free_table(tbl);
+	tce_iommu_free_table(container, tbl);
 	container->tables[num] = NULL;
 
 	return 0;
@@ -1270,6 +1277,28 @@ const struct vfio_iommu_driver_ops tce_iommu_driver_ops = {
 	.detach_group	= tce_iommu_detach_group,
 };
 
+
+struct iommu_table *vfio_container_spapr_tce_get_table(
+		void *iommu_data, u64 offset,
+		void (*release)(void *opaque, struct iommu_table *tbl),
+		void *opaque)
+{
+	struct tce_container *container = iommu_data;
+	struct iommu_table *tbl = NULL;
+	int num = tce_iommu_find_table(container, offset, &tbl);
+
+	if (num < 0)
+		return NULL;
+
+	WARN_ON(container->table_release && release &&
+			(container->table_release != release));
+	container->table_release = release;
+	container->opaque = opaque;
+
+	return tbl;
+}
+EXPORT_SYMBOL_GPL(vfio_container_spapr_tce_get_table);
+
 static int __init tce_iommu_init(void)
 {
 	return vfio_register_iommu_driver(&tce_iommu_driver_ops);
@@ -1287,4 +1316,3 @@ MODULE_VERSION(DRIVER_VERSION);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);
-
