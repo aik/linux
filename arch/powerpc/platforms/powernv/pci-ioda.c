@@ -1362,8 +1362,7 @@ static void pnv_pci_ioda2_release_dma_pe(struct pci_dev *dev, struct pnv_ioda_pe
 		iommu_group_put(pe->table_group.group);
 		BUG_ON(pe->table_group.group);
 	}
-	pnv_pci_ioda2_table_free_pages(tbl);
-	iommu_free_table(tbl, of_node_full_name(dev->dev.of_node));
+	iommu_free_table(tbl, "pnv");
 }
 
 static void pnv_ioda_release_vf_PE(struct pci_dev *pdev)
@@ -1974,7 +1973,6 @@ static void pnv_ioda2_tce_free(struct iommu_table *tbl, long index,
 static void pnv_ioda2_table_free(struct iommu_table *tbl)
 {
 	pnv_pci_ioda2_table_free_pages(tbl);
-	iommu_free_table(tbl, "pnv");
 }
 
 static struct iommu_table_ops pnv_ioda2_iommu_ops = {
@@ -2309,7 +2307,7 @@ static long pnv_pci_ioda2_setup_default_config(struct pnv_ioda_pe *pe)
 	if (rc) {
 		pe_err(pe, "Failed to configure 32-bit TCE table, err %ld\n",
 				rc);
-		pnv_ioda2_table_free(tbl);
+		iommu_free_table(tbl, "pnv");
 		return rc;
 	}
 
@@ -2399,7 +2397,7 @@ static void pnv_ioda2_take_ownership(struct iommu_table_group *table_group)
 
 	pnv_pci_ioda2_set_bypass(pe, false);
 	pnv_pci_ioda2_unset_window(&pe->table_group, 0);
-	pnv_ioda2_table_free(tbl);
+	iommu_free_table(tbl, "pnv");
 }
 
 static void pnv_ioda2_release_ownership(struct iommu_table_group *table_group)
