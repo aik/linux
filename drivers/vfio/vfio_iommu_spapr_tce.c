@@ -599,7 +599,7 @@ static void tce_iommu_free_table(struct iommu_table *tbl)
 	unsigned long pages = tbl->it_allocated_size >> PAGE_SHIFT;
 
 	tce_iommu_userspace_view_free(tbl);
-	iommu_free_table(tbl, "vfio");
+	iommu_table_put(tbl);
 	decrement_locked_vm(pages);
 }
 
