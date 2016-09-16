@@ -73,17 +73,24 @@ int xhci_mvebu_probe(struct platform_device *pdev)
 	if (!res)
 		return -ENODEV;
 
-	base = devm_ioremap_resource(&pdev->dev, res);
+	/*
+	 * FROM: WD_MyCloud_GPL_v2.21.111_20160629
+	 * We don't use devm_ioremap() because this mapping should
+	 * only exists for the duration of this probe function.
+	 */
+	base = ioremap(res->start, resource_size(res));
 	if (!base)
-		return -ENOMEM;
+		return -ENODEV;
 
 	clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(clk)) {
+		iounmap(base);
 		return PTR_ERR(clk);
 	}
 
 	ret = clk_prepare_enable(clk);
 	if (ret < 0) {
+		iounmap(base);
 		return ret;
 	}
 
@@ -92,6 +99,21 @@ int xhci_mvebu_probe(struct platform_device *pdev)
 
 	priv->base = base;
 	priv->clk = clk;
+
+	/*
+	 * FROM: WD_MyCloud_GPL_v2.21.111_20160629
+	 * This memory area was only needed to configure the MBus
+	 * windows, and is therefore no longer useful.
+	 */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res)
+		return -ENODEV;
+	base = ioremap(res->start, resource_size(res));
+	if (!base)
+		return -ENODEV;
+	set_bit(7, base + 0x380C);
+
+	iounmap(base);
 
 	ret = common_xhci_plat_probe(pdev, priv);
 	if (ret < 0) {
