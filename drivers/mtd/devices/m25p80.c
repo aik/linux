@@ -735,6 +735,7 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "mr25h256", CAT25_INFO(  32 * 1024, 1, 256, 2) },
 
 	/* GigaDevice */
+	{ "gd25q80", INFO(0xc84014, 0, 4 * 1024,  256, SECT_4K) }, // ALPHA_CUSTOMIZE, added by casper.
 	{ "gd25q32", INFO(0xc84016, 0, 64 * 1024,  64, SECT_4K) },
 	{ "gd25q64", INFO(0xc84017, 0, 64 * 1024, 128, SECT_4K) },
 
