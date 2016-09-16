@@ -1,0 +1,5 @@
+#!/bin/sh
+
+MAC=$(dd if=/dev/mtd0 bs=1 skip=1046528 count=17 2>/dev/null)
+test "$MAC" = "00:00:00:00:00:00" && MAC=""
+test "$MAC" != "" && ifconfig eth0 hw ether $MAC
