@@ -523,7 +523,7 @@ static int orion_spi_probe(struct platform_device *pdev)
 	unsigned long tclk_hz;
 	int status = 0;
 	u32 ret;
-	unsigned int num_cs;
+	unsigned int num_cs = ORION_NUM_CHIPSELECTS;
 
 	master = spi_alloc_master(&pdev->dev, sizeof *spi);
 	if (master == NULL) {
