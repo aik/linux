@@ -1,0 +1,245 @@
+/*
+ * Device Tree file for Marvell Armada 375 evaluation board
+ * (DB-88F6720)
+ *
+ *  Copyright (C) 2013 Marvell
+ *
+ * Gregory CLEMENT <gregory.clement@free-electrons.com>
+ *
+ * This file is licensed under the terms of the GNU General Public
+ * License version 2.  This program is licensed "as is" without any
+ * warranty of any kind, whether express or implied.
+ */
+
+/dts-v1/;
+#include "armada-375.dtsi"
+
+/ {
+	model = "Marvell Armada 375 Development Board";
+	compatible = "marvell,a375-db", "marvell,armada375";
+
+	chosen {
+		bootargs = "console=ttyS0,115200 earlyprintk";
+	};
+
+	memory {
+		device_type = "memory";
+		reg = <0x00000000 0x20000000>; /* 512 MB */
+	};
+
+	soc {
+
+		ranges = <MBUS_ID(0xf0, 0x01) 0 0xf1000000 0x100000 /* internal regs */
+			  MBUS_ID(0x01, 0x1d) 0 0xfff00000 0x100000  /* bootrom */
+			  MBUS_ID(0x09, 0x09) 0 0xf1100000 0x10000   /* CESA0: PHYS=0xf1100000 size 64K */
+			  MBUS_ID(0x09, 0x05) 0 0xf1110000 0x10000>; /* CESA1: PHYS=0xf1110000 size 64K */
+
+		internal-regs {
+			ethernet@c4000 {
+				status = "okay";
+				phy = <&phy0>;
+				phy-mode = "mii";
+			};
+
+			ethernet@c5000 {
+				status = "okay";
+				phy = <&phy3>;
+				phy-mode = "mii";
+			};
+
+			mdio {
+				phy0: ethernet-phy@0 {
+					reg = <0>;
+				};
+
+				phy3: ethernet-phy@3 {
+					reg = <3>;
+				};
+			};
+
+			i2c0: i2c@11000 {
+				clock-frequency = <100000>;
+				pinctrl-0 = <&i2c0_pins>;
+				pinctrl-names = "default";
+				status = "disabled";
+			};
+
+			i2c1: i2c@11100 {
+				clock-frequency = <100000>;
+				pinctrl-0 = <&i2c1_pins>;
+				pinctrl-names = "default";
+				status = "disabled";
+			};
+
+			mvsdio@d4000 {
+				pinctrl-0 = <&sdio_pins &sdio_st_pins>;
+				pinctrl-names = "default";
+				status = "disabled";
+				cd-gpios = <&gpio1 12 0>;
+				wp-gpios = <&gpio1 13 0>;
+			};
+
+			pinctrl {
+				sdio_st_pins: sdio-st-pins {
+					marvell,pins = "mpp44", "mpp45";
+					marvell,function = "gpio";
+				};
+
+				sata_sd_pins: sata-sd-pins {
+					marvell,pins = "mpp63", "mpp66";
+					marvell,function = "gpio";
+				};
+
+				sys_led_pins: sys-led-pins {
+					marvell,pins = "mpp20", "mpp43", "mpp22"; // R G B
+					marvell,function = "gpio";
+				};
+
+				btn_reset_pins: btn-reset-pins {
+					marvell,pins = "mpp44";
+					marvell,function = "gpio";
+				};
+			};
+
+			gpio-leds {
+				compatible = "gpio-leds";
+				pinctrl-names = "default";
+				pinctrl-0 = <&sys_led_pins>;
+
+				system-r {
+					label = "system-red";
+					gpios = <&gpio0 20 0>;	// chip, pin, state (1=active-low)
+					// Triggers: none nand-disk timer oneshot heartbeat backlight gpio cpu0 cpu1 default-on
+					linux,default-trigger = "default-on";
+				};
+				system-g {
+					label = "system-green";
+					gpios = <&gpio1 11 0>; // 43 (mpp43) - 32 (gpio in chip) = 11 (pin in this chip)
+					linux,default-trigger = "default-on";
+				};
+				lsystem-b {
+					label = "system-blue";
+					gpios = <&gpio0 22 0>;
+//					linux,default-trigger = "default-off";
+					linux,default-trigger = "default-on";
+				};
+			};
+
+			gpio-keys {
+				compatible = "gpio-keys";
+				pinctrl-names = "default";
+				pinctrl-0 = <&btn_reset_pins>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				btn-reset {
+					label = "btn-reset";
+					gpios = <&gpio1 12 0>; // 44-32=12
+					linux,code = <198>; // KEY_RESTART, from: include/uapi/linux/input-event-codes.h
+					gpio-key,wakeup;
+					//autorepeat;
+				};
+			};
+
+			sata@a0000 {
+				nr-ports = <2>;
+				status = "okay";
+				pinctrl-0 = <&sata_sd_pins>;
+				pinctrl-names = "default";
+				status = "okay";
+				sd-gpios = <&gpio1 31 0>, <&gpio2 2 0>;
+			};
+
+			serial@12000 {
+				status = "okay";
+				clocks = <&coreclk 0>;
+			};
+
+			spi0: spi@10600 {
+				pinctrl-0 = <&spi0_pins>;
+				pinctrl-names = "default";
+				status = "okay";
+
+				spi-flash@0 {
+					#address-cells = <1>;
+					#size-cells = <1>;
+					compatible = "mx25l8005"; // WDMC Gen2 - this is actually in my device
+					//compatible = "n25q128a13"; // picked from running 3.10.39
+					reg = <0>; // Chip select 0
+					spi-max-frequency = <108000000>;
+				};
+			};
+
+			usb@50000 {
+				status = "disabled";
+			};
+
+			usb@54000 {
+//				status = "disabled";
+				status = "okay";
+			};
+
+			usb3@58000 {
+				status = "okay";
+			};
+
+			nand: nand@d0000 {
+				compatible = "marvell,armada-375-nand";
+				reg = <0xd0000 0x54>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				interrupts = <0 84 0x4>;
+				clocks = <&coredivclk 0>, <&gateclk 11>;
+				clock-names = "ecc_clk", "gateclk";
+				status = "disabled";
+				pinctrl-0 = <&nand_pins>;
+				pinctrl-names = "default";
+				nfc,nfc-mode = "normal";
+				nfc,nfc-dma = <0x0>;
+				nfc,nfc-width = <0x8>;
+				nfc,ecc-type = <0x1>;
+				nfc,num-cs = <0x1>;
+				marvell,nand-keep-config;
+				marvell,nand-enable-arbiter;
+				nand-on-flash-bbt;
+
+				partition@0 {
+					label = "U-Boot";
+					reg = <0x0 0x800000>;
+					read-only;
+				};
+
+				partition@800000 {
+					label = "Linux";
+					reg = <0x800000 0x800000>;
+					read-only;
+				};
+
+				partition@1000000 {
+					label = "Filesystem";
+					reg = <0x1000000 0x3f000000>;
+				};
+			};
+
+			crypto@9D000 {
+				status = "okay";
+			};
+
+			common-phy@18310 {
+				status = "okay";
+			};
+		};
+
+		pcie-controller {
+			//status = "okay";
+			status = "disabled";
+
+			pcie@1,0 {
+				status = "disabled";
+			};
+			pcie@2,0 {
+				status = "disabled";
+			};
+		};
+	};
+};
