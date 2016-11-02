@@ -127,9 +127,15 @@ extern int vfio_register_notifier(struct device *dev,
 extern int vfio_unregister_notifier(struct device *dev,
 				    enum vfio_notify_type type,
 				    struct notifier_block *nb);
+extern int vfio_iommu_group_register_notifier(struct iommu_group *grp,
+		enum vfio_notify_type type, unsigned long *events,
+		struct notifier_block *nb);
+extern int vfio_iommu_group_unregister_notifier(struct iommu_group *grp,
+		enum vfio_notify_type type, struct notifier_block *nb);
 
 struct kvm;
 extern void vfio_group_set_kvm(struct vfio_group *group, struct kvm *kvm);
+extern void vfio_iommu_group_set_kvm(struct iommu_group *grp, struct kvm *kvm);
 
 /*
  * Sub-module helpers

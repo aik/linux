@@ -2077,6 +2077,23 @@ void vfio_group_set_kvm(struct vfio_group *group, struct kvm *kvm)
 }
 EXPORT_SYMBOL_GPL(vfio_group_set_kvm);
 
+void vfio_iommu_group_set_kvm(struct iommu_group *grp, struct kvm *kvm)
+{
+	struct vfio_group *group;
+
+	if (!grp)
+		return;
+
+	group = vfio_group_get_from_iommu(grp);
+	if (!group)
+		return;
+
+	vfio_group_set_kvm(group, kvm);
+
+	vfio_group_put(group);
+}
+EXPORT_SYMBOL_GPL(vfio_iommu_group_set_kvm);
+
 static int vfio_register_group_notifier(struct vfio_group *group,
 					unsigned long *events,
 					struct notifier_block *nb)
@@ -2196,6 +2213,65 @@ int vfio_unregister_notifier(struct device *dev, enum vfio_notify_type type,
 	return ret;
 }
 EXPORT_SYMBOL(vfio_unregister_notifier);
+
+int vfio_iommu_group_register_notifier(struct iommu_group *iommugroup,
+		enum vfio_notify_type type,
+		unsigned long *events, struct notifier_block *nb)
+{
+	struct vfio_group *group;
+	int ret;
+
+	if (!iommugroup || !nb || !events || (*events == 0))
+		return -EINVAL;
+
+	group = vfio_group_get_from_iommu(iommugroup);
+	if (!group)
+		return -ENODEV;
+
+	switch (type) {
+	case VFIO_IOMMU_NOTIFY:
+		ret = vfio_register_iommu_notifier(group, events, nb);
+		break;
+	case VFIO_GROUP_NOTIFY:
+		ret = vfio_register_group_notifier(group, events, nb);
+		break;
+	default:
+		ret = -EINVAL;
+	}
+
+	vfio_group_put(group);
+	return ret;
+}
+EXPORT_SYMBOL(vfio_iommu_group_register_notifier);
+
+int vfio_iommu_group_unregister_notifier(struct iommu_group *grp,
+		enum vfio_notify_type type, struct notifier_block *nb)
+{
+	struct vfio_group *group;
+	int ret;
+
+	if (!grp || !nb)
+		return -EINVAL;
+
+	group = vfio_group_get_from_iommu(grp);
+	if (!group)
+		return -ENODEV;
+
+	switch (type) {
+	case VFIO_IOMMU_NOTIFY:
+		ret = vfio_unregister_iommu_notifier(group, nb);
+		break;
+	case VFIO_GROUP_NOTIFY:
+		ret = vfio_unregister_group_notifier(group, nb);
+		break;
+	default:
+		ret = -EINVAL;
+	}
+
+	vfio_group_put(group);
+	return ret;
+}
+EXPORT_SYMBOL(vfio_iommu_group_unregister_notifier);
 
 /**
  * Module/class support
