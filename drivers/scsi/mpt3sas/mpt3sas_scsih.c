@@ -9078,6 +9078,14 @@ scsih_pci_slot_reset(struct pci_dev *pdev)
 	ioc->pci_error_recovery = 0;
 	ioc->pdev = pdev;
 	pci_restore_state(pdev);
+
+	/* Do not try to recover if the PCI error happened while loading,
+	 * as this leads the driver to tear down in mpt3sas_base_attach()
+	 * (out_free_resources), and hit an oops later down this path.
+	 */
+	if (ioc->is_driver_loading)
+		return PCI_ERS_RESULT_DISCONNECT;
+
 	rc = mpt3sas_base_map_resources(ioc);
 	if (rc)
 		return PCI_ERS_RESULT_DISCONNECT;
