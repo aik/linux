@@ -193,6 +193,8 @@ static void vfio_pci_disable(struct vfio_pci_device *vdev);
  */
 static bool vfio_pci_nointx(struct pci_dev *pdev)
 {
+	u8 pin = 0;
+
 	switch (pdev->vendor) {
 	case PCI_VENDOR_ID_INTEL:
 		switch (pdev->device) {
@@ -203,10 +205,21 @@ static bool vfio_pci_nointx(struct pci_dev *pdev)
 		case 0x1583 ... 0x158b:
 		case 0x37d0 ... 0x37d2:
 			return true;
-		default:
-			return false;
 		}
 	}
+
+	pci_read_config_byte(pdev, PCI_INTERRUPT_PIN, &pin);
+	/*
+	 * If the device supports INTx, but it cannot be enabled, invoke
+	 * nointx to mask the pin value and INTx IRQ_INFO to the user.
+	 *
+	 * NB. Generally nointx depends on at least being able to prevent the
+	 * device from generating INTx, so ideally we might check if INTx
+	 * masking is supported, but perhaps we can interpret lack of an irq
+	 * as lack of routing and presume the INTx line is unwired.
+	 */
+	if (pin && !pdev->irq)
+		return true;
 
 	return false;
 }
