@@ -160,4 +160,12 @@ static inline int vfio_pci_igd_init(struct vfio_pci_device *vdev)
 	return -ENODEV;
 }
 #endif
+#ifdef CONFIG_VFIO_PCI_NVLINK2
+extern int vfio_pci_nvlink2_init(struct vfio_pci_device *vdev);
+#else
+static inline int vfio_pci_nvlink2_init(struct vfio_pci_device *vdev)
+{
+	return -ENODEV;
+}
+#endif
 #endif /* VFIO_PCI_PRIVATE_H */
