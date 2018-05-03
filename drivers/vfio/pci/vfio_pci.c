@@ -1123,9 +1123,15 @@ static int vfio_pci_mmap(void *device_data, struct vm_area_struct *vma)
 		return -EINVAL;
 	if ((vma->vm_flags & VM_SHARED) == 0)
 		return -EINVAL;
-	if (index >= VFIO_PCI_ROM_REGION_INDEX)
+	if (index >= VFIO_PCI_NUM_REGIONS) {
+		int regnum = index - VFIO_PCI_NUM_REGIONS;
+		struct vfio_pci_region *region = vdev->region + regnum;
+
+		if (region && region->ops && region->ops->mmap)
+			return region->ops->mmap(vdev, region, vma);
 		return -EINVAL;
-	if (!vdev->bar_mmap_supported[index])
+	}
+	if (index >= VFIO_PCI_ROM_REGION_INDEX)
 		return -EINVAL;
 
 	phys_len = PAGE_ALIGN(pci_resource_len(pdev, index));
