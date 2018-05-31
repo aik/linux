@@ -1001,8 +1001,12 @@ long iommu_tce_xchg(struct iommu_table *tbl, unsigned long entry,
 	ret = tbl->it_ops->exchange(tbl, entry, hpa, direction);
 
 	if (!ret && ((*direction == DMA_FROM_DEVICE) ||
-			(*direction == DMA_BIDIRECTIONAL)))
-		SetPageDirty(pfn_to_page(*hpa >> PAGE_SHIFT));
+			(*direction == DMA_BIDIRECTIONAL))) {
+		struct page *pg = __va(realmode_pfn_to_page(*hpa >> PAGE_SHIFT));
+
+		if (pg)
+			SetPageDirty(pg);
+	}
 
 	/* if (unlikely(ret))
 		pr_err("iommu_tce: %s failed on hwaddr=%lx ioba=%lx kva=%lx ret=%d\n",

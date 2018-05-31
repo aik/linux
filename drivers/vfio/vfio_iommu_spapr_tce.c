@@ -252,7 +252,17 @@ static void tce_iommu_userspace_view_free(struct iommu_table *tbl,
 
 static bool tce_page_is_contained(unsigned long hpa, unsigned page_shift)
 {
-	struct page *page = pfn_to_page(hpa >> PAGE_SHIFT);
+	struct page *page = __va(realmode_pfn_to_page(hpa >> PAGE_SHIFT));
+
+	/*
+	 * If there not page, we assume it is a device memory and therefore
+	 * it is contigous and always pinned.
+	 *
+	 * TODO: test device boundaries?
+	 */
+	if (!page)
+		return true;
+
 	/*
 	 * Check that the TCE table granularity is not bigger than the size of
 	 * a page we just found. Otherwise the hardware can get access to
