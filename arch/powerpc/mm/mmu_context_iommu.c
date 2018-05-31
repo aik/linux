@@ -89,7 +89,7 @@ bool mm_iommu_preregistered(struct mm_struct *mm)
 }
 EXPORT_SYMBOL_GPL(mm_iommu_preregistered);
 
-long mm_iommu_get(struct mm_struct *mm, unsigned long ua, unsigned long entries,
+long mm_iommu_new(struct mm_struct *mm, unsigned long ua, unsigned long entries,
 		struct mm_iommu_table_group_mem_t **pmem)
 {
 	struct mm_iommu_table_group_mem_t *mem;
@@ -100,12 +100,6 @@ long mm_iommu_get(struct mm_struct *mm, unsigned long ua, unsigned long entries,
 
 	list_for_each_entry_rcu(mem, &mm->context.iommu_group_mem_list,
 			next) {
-		if ((mem->ua == ua) && (mem->entries == entries)) {
-			++mem->used;
-			*pmem = mem;
-			goto unlock_exit;
-		}
-
 		/* Overlap? */
 		if ((mem->ua < (ua + (entries << PAGE_SHIFT))) &&
 				(ua < (mem->ua +
@@ -192,7 +186,7 @@ unlock_exit:
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(mm_iommu_get);
+EXPORT_SYMBOL_GPL(mm_iommu_new);
 
 static void mm_iommu_unpin(struct mm_iommu_table_group_mem_t *mem)
 {
@@ -308,21 +302,26 @@ struct mm_iommu_table_group_mem_t *mm_iommu_lookup_rm(struct mm_struct *mm,
 	return ret;
 }
 
-struct mm_iommu_table_group_mem_t *mm_iommu_find(struct mm_struct *mm,
+struct mm_iommu_table_group_mem_t *mm_iommu_get(struct mm_struct *mm,
 		unsigned long ua, unsigned long entries)
 {
 	struct mm_iommu_table_group_mem_t *mem, *ret = NULL;
 
+	mutex_lock(&mem_list_mutex);
+
 	list_for_each_entry_rcu(mem, &mm->context.iommu_group_mem_list, next) {
 		if ((mem->ua == ua) && (mem->entries == entries)) {
 			ret = mem;
+			++mem->used;
 			break;
 		}
 	}
 
+	mutex_unlock(&mem_list_mutex);
+
 	return ret;
 }
-EXPORT_SYMBOL_GPL(mm_iommu_find);
+EXPORT_SYMBOL_GPL(mm_iommu_get);
 
 long mm_iommu_ua_to_hpa(struct mm_iommu_table_group_mem_t *mem,
 		unsigned long ua, unsigned int pageshift, unsigned long *hpa)
