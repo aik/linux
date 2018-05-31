@@ -212,9 +212,15 @@ static long tce_iommu_register_pages(struct tce_container *container,
 	return 0;
 }
 
-static bool tce_page_is_contained(unsigned long hpa, unsigned page_shift)
+static bool tce_page_is_contained(struct mm_struct *mm, unsigned long hpa,
+		unsigned page_shift)
 {
-	struct page *page = pfn_to_page(hpa >> PAGE_SHIFT);
+	struct page *page;
+
+	if (mm_iommu_is_hpa(mm, hpa))
+		return true;
+
+	page = pfn_to_page(hpa >> PAGE_SHIFT);
 	/*
 	 * Check that the TCE table granularity is not bigger than the size of
 	 * a page we just found. Otherwise the hardware can get access to
@@ -491,7 +497,7 @@ static int tce_iommu_clear(struct tce_container *container,
 
 		direction = DMA_NONE;
 		oldhpa = 0;
-		ret = iommu_tce_xchg(tbl, entry, &oldhpa, &direction);
+		ret = iommu_tce_xchg(container->mm, tbl, entry, &oldhpa, &direction);
 		if (ret)
 			continue;
 
@@ -539,14 +545,15 @@ static long tce_iommu_build(struct tce_container *container,
 		if (ret)
 			break;
 
-		if (!tce_page_is_contained(hpa, tbl->it_page_shift)) {
+		if (!tce_page_is_contained(container->mm, hpa,
+				tbl->it_page_shift)) {
 			ret = -EPERM;
 			break;
 		}
 
 		hpa |= offset;
 		dirtmp = direction;
-		ret = iommu_tce_xchg(tbl, entry + i, &hpa, &dirtmp);
+		ret = iommu_tce_xchg(container->mm, tbl, entry + i, &hpa, &dirtmp);
 		if (ret) {
 			tce_iommu_unuse_page(container, hpa);
 			pr_err("iommu_tce: %s failed ioba=%lx, tce=%lx, ret=%ld\n",
@@ -585,7 +592,8 @@ static long tce_iommu_build_v2(struct tce_container *container,
 		if (ret)
 			break;
 
-		if (!tce_page_is_contained(hpa, tbl->it_page_shift)) {
+		if (!tce_page_is_contained(container->mm, hpa,
+				tbl->it_page_shift)) {
 			ret = -EPERM;
 			break;
 		}
@@ -598,7 +606,7 @@ static long tce_iommu_build_v2(struct tce_container *container,
 		if (mm_iommu_mapped_inc(mem))
 			break;
 
-		ret = iommu_tce_xchg(tbl, entry + i, &hpa, &dirtmp);
+		ret = iommu_tce_xchg(container->mm, tbl, entry + i, &hpa, &dirtmp);
 		if (ret) {
 			/* dirtmp cannot be DMA_NONE here */
 			tce_iommu_unuse_page_v2(container, tbl, entry + i);
