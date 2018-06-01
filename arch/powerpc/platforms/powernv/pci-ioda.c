@@ -1791,54 +1791,61 @@ static bool pnv_pci_ioda_pe_single_vendor(struct pnv_ioda_pe *pe)
  *
  * Currently this will only work on PHB3 (POWER8).
  */
+static long pnv_pci_ioda2_create_table(struct iommu_table_group *table_group,
+		int num, __u32 page_shift, __u64 window_size, __u32 levels,
+		struct iommu_table **ptbl);
+
+static long pnv_pci_ioda2_set_window(struct iommu_table_group *table_group,
+		int num, struct iommu_table *tbl);
+
+static unsigned long pnv_ioda_parse_tce_sizes(struct pnv_phb *phb);
+
 static int pnv_pci_ioda_dma_64bit_bypass(struct pnv_ioda_pe *pe)
 {
-	u64 window_size, table_size, tce_count, addr;
-	struct page *table_pages;
-	u64 tce_order = 28; /* 256MB TCEs */
-	__be64 *tces;
+	u64 window_size;
 	s64 rc;
+	struct iommu_table *tbl, *oldtbl = NULL;
+	unsigned long shift, offset;
 
 	/*
 	 * Window size needs to be a power of two, but needs to account for
 	 * shifting memory by the 4GB offset required to skip 32bit space.
 	 */
-	window_size = roundup_pow_of_two(memory_hotplug_max() + (1ULL << 32));
-	tce_count = window_size >> tce_order;
-	table_size = tce_count << 3;
-
-	if (table_size < PAGE_SIZE)
-		table_size = PAGE_SIZE;
-
-	table_pages = alloc_pages_node(pe->phb->hose->node, GFP_KERNEL,
-				       get_order(table_size));
-	if (!table_pages)
-		goto err;
-
-	tces = page_address(table_pages);
-	if (!tces)
-		goto err;
-
-	memset(tces, 0, table_size);
-
-	for (addr = 0; addr < memory_hotplug_max(); addr += (1 << tce_order)) {
-		tces[(addr + (1ULL << 32)) >> tce_order] =
-			cpu_to_be64(addr | TCE_PCI_READ | TCE_PCI_WRITE);
+	window_size = roundup_pow_of_two(memory_hotplug_max() + SZ_4G);
+	shift = ilog2(pnv_ioda_parse_tce_sizes(pe->phb));
+	rc = pnv_pci_ioda2_create_table(&pe->table_group, 0, shift, window_size,
+			POWERNV_IOMMU_DEFAULT_LEVELS, &tbl);
+	if (rc) {
+		pe_err(pe, "Failed to create 64-bypass TCE table, err %ld", rc);
+		return rc;
 	}
 
-	rc = opal_pci_map_pe_dma_window(pe->phb->opal_id,
-					pe->pe_number,
-					/* reconfigure window 0 */
-					(pe->pe_number << 1) + 0,
-					1,
-					__pa(tces),
-					table_size,
-					1 << tce_order);
-	if (rc == OPAL_SUCCESS) {
-		pe_info(pe, "Using 64-bit DMA iommu bypass (through TVE#0)\n");
-		return 0;
+	offset = SZ_4G >> shift;
+	rc = tbl->it_ops->set(tbl, offset, tbl->it_size - offset,
+			0 /* uaddr */, DMA_BIDIRECTIONAL, 0 /* attrs */);
+	if (rc)
+		goto err;
+
+	if (pe->table_group.tables[0]) {
+		oldtbl = pe->table_group.tables[0];
+		pnv_pci_ioda2_unset_window(&pe->table_group, 0);
 	}
+
+	rc = pnv_pci_ioda2_set_window(&pe->table_group, 0, tbl);
+	if (rc != OPAL_SUCCESS) {
+		rc = pnv_pci_ioda2_set_window(&pe->table_group, 0, oldtbl);
+		goto err;
+	}
+
+	if (oldtbl)
+		iommu_tce_table_put(oldtbl);
+
+	pe_info(pe, "Using 64-bit DMA iommu bypass (through TVE#0)\n");
+	return 0;
+
 err:
+	iommu_tce_table_put(tbl);
+
 	pe_err(pe, "Error configuring 64-bit DMA bypass\n");
 	return -EIO;
 }
