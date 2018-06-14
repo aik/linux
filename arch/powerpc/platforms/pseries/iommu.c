@@ -53,6 +53,8 @@
 
 #include "pseries.h"
 
+#define DDW_INVALID_OFFSET	((uint64_t)-1)
+
 static struct iommu_table_group *iommu_pseries_alloc_group(int node)
 {
 	struct iommu_table_group *table_group;
@@ -844,7 +846,7 @@ static u64 find_existing_ddw(struct device_node *pdn)
 {
 	struct direct_window *window;
 	const struct dynamic_dma_window_prop *direct64;
-	u64 dma_addr = 0;
+	u64 dma_addr = DDW_INVALID_OFFSET;
 
 	spin_lock(&direct_window_list_lock);
 	/* check if we already created a window and dupe that config if so */
@@ -992,7 +994,7 @@ static u64 enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 	mutex_lock(&direct_window_init_mutex);
 
 	dma_addr = find_existing_ddw(pdn);
-	if (dma_addr != 0)
+	if (dma_addr != DDW_INVALID_OFFSET)
 		goto out_unlock;
 
 	/*
@@ -1228,7 +1230,7 @@ static int dma_set_mask_pSeriesLP(struct device *dev, u64 dma_mask)
 		}
 		if (pdn && PCI_DN(pdn)) {
 			dma_offset = enable_ddw(pdev, pdn);
-			if (dma_offset != 0) {
+			if (dma_offset != DDW_INVALID_OFFSET) {
 				dev_info(dev, "Using 64-bit direct DMA at offset %llx\n", dma_offset);
 				set_dma_offset(dev, dma_offset);
 				set_dma_ops(dev, &dma_nommu_ops);
