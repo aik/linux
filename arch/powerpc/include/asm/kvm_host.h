@@ -321,6 +321,7 @@ struct kvm_arch {
 	/* This array can grow quite large, keep it at the end */
 	struct kvmppc_vcore *vcores[KVM_MAX_VCORES];
 #endif
+	struct dentry *mm_ctxid_dentry;
 };
 
 #define VCORE_ENTRY_MAP(vc)	((vc)->entry_exit_map & 0xff)
