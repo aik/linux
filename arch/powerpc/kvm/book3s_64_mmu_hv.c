@@ -2136,11 +2136,69 @@ static const struct file_operations debugfs_htab_fops = {
 	.llseek	 = generic_file_llseek,
 };
 
+static int debugfs_mm_ctxid_open(struct inode *inode, struct file *file)
+{
+	struct kvm *kvm = inode->i_private;
+
+	kvm_get_kvm(kvm);
+	file->private_data = kvm;
+
+	return nonseekable_open(inode, file);
+}
+
+static int debugfs_mm_ctxid_release(struct inode *inode, struct file *file)
+{
+	struct kvm *kvm = file->private_data;
+
+	kvm_put_kvm(kvm);
+	return 0;
+}
+
+static ssize_t debugfs_mm_ctxid_read(struct file *file, char __user *buf,
+				 size_t len, loff_t *ppos)
+{
+	struct kvm *kvm = file->private_data;
+	ssize_t n, left, ret;
+	char tmp[64];
+
+	if (!kvm_is_radix(kvm))
+		return 0;
+
+	ret = snprintf(tmp, sizeof(tmp) - 1, "%lu\n", kvm->mm->context.id);
+	if (*ppos >= ret)
+		return 0;
+
+	left = min_t(ssize_t, ret - *ppos, len);
+	n = copy_to_user(buf, tmp + *ppos, left);
+	ret = left - n;
+	*ppos += ret;
+
+	return ret;
+}
+
+static ssize_t debugfs_mm_ctxid_write(struct file *file, const char __user *buf,
+			   size_t len, loff_t *ppos)
+{
+	return -EACCES;
+}
+
+static const struct file_operations debugfs_mm_ctxid_fops = {
+	.owner	 = THIS_MODULE,
+	.open	 = debugfs_mm_ctxid_open,
+	.release = debugfs_mm_ctxid_release,
+	.read	 = debugfs_mm_ctxid_read,
+	.write	 = debugfs_mm_ctxid_write,
+	.llseek	 = generic_file_llseek,
+};
+
 void kvmppc_mmu_debugfs_init(struct kvm *kvm)
 {
 	kvm->arch.htab_dentry = debugfs_create_file("htab", 0400,
 						    kvm->arch.debugfs_dir, kvm,
 						    &debugfs_htab_fops);
+	kvm->arch.mm_ctxid_dentry = debugfs_create_file("mm_ctxid", 0400,
+						    kvm->arch.debugfs_dir, kvm,
+						    &debugfs_mm_ctxid_fops);
 }
 
 void kvmppc_mmu_book3s_hv_init(struct kvm_vcpu *vcpu)
