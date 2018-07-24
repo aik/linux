@@ -54,6 +54,7 @@
 #include "pseries.h"
 
 #define DDW_INVALID_OFFSET	((uint64_t)-1)
+#define DDW_INVALID_LIOBN	((uint32_t)-1)
 
 static struct iommu_table_group *iommu_pseries_alloc_group(int node)
 {
@@ -977,7 +978,8 @@ static LIST_HEAD(failed_ddw_pdn_list);
  *
  * returns the dma offset for use by dma_set_mask
  */
-static u64 enable_ddw(struct pci_dev *dev, struct device_node *pdn)
+static u64 enable_ddw(struct pci_dev *dev, struct device_node *pdn,
+		u32 default_liobn)
 {
 	int len, ret;
 	struct ddw_query_response query;
@@ -1021,6 +1023,16 @@ static u64 enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 					 &ddw_avail[0], 3);
 	if (ret)
 		goto out_failed;
+
+	/*
+	 * The device tree has a request to force remove the default window,
+	 * do this.
+	 */
+	if (default_liobn != DDW_INVALID_LIOBN && (!ddw_avail[2] ||
+			rtas_call(ddw_avail[2], 1, 1, NULL, default_liobn))) {
+		dev_dbg(&dev->dev, "Could not remove window");
+		goto out_failed;
+	}
 
        /*
 	 * Query if there is a second window of size to map the
@@ -1212,7 +1224,7 @@ static int dma_set_mask_pSeriesLP(struct device *dev, u64 dma_mask)
 	pdev = to_pci_dev(dev);
 
 	/* only attempt to use a new window if 64-bit DMA is requested */
-	if (!disable_ddw && dma_mask == DMA_BIT_MASK(64)) {
+	if (!disable_ddw && dma_mask > DMA_BIT_MASK(32)) {
 		dn = pci_device_to_OF_node(pdev);
 		dev_dbg(dev, "node is %pOF\n", dn);
 
@@ -1229,7 +1241,15 @@ static int dma_set_mask_pSeriesLP(struct device *dev, u64 dma_mask)
 				break;
 		}
 		if (pdn && PCI_DN(pdn)) {
-			dma_offset = enable_ddw(pdev, pdn);
+			u32 flag = 0, liobn = DDW_INVALID_LIOBN;
+			int ret = of_property_read_u32(pdn,
+					"qemu,dma-force-remove-default", &flag);
+
+			if (!ret && flag && dma_window &&
+					dma_mask != DMA_BIT_MASK(64))
+				liobn = be32_to_cpu(dma_window[0]);
+
+			dma_offset = enable_ddw(pdev, pdn, liobn);
 			if (dma_offset != DDW_INVALID_OFFSET) {
 				dev_info(dev, "Using 64-bit direct DMA at offset %llx\n", dma_offset);
 				set_dma_offset(dev, dma_offset);
