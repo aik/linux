@@ -1016,11 +1016,17 @@ long iommu_tce_xchg(struct mm_struct *mm, struct iommu_table *tbl,
 }
 EXPORT_SYMBOL_GPL(iommu_tce_xchg);
 
-int iommu_take_ownership(struct iommu_table *tbl)
+int iommu_take_ownership(struct iommu_table_group *table_group, int num,
+		struct iommu_table **ptbl)
 {
-	unsigned long flags, i, sz = (tbl->it_size + 7) >> 3;
+	struct iommu_table *tbl = table_group->tables[num];
+	unsigned long flags, i, sz;
 	int ret = 0;
 
+	if (!tbl || !tbl->it_map)
+		return -ENOENT;
+
+	sz = (tbl->it_size + 7) >> 3;
 	/*
 	 * VFIO does not control TCE entries allocation and the guest
 	 * can write new TCEs on top of existing ones so iommu_tce_build()
@@ -1051,6 +1057,9 @@ int iommu_take_ownership(struct iommu_table *tbl)
 	for (i = 0; i < tbl->nr_pools; i++)
 		spin_unlock(&tbl->pools[i].lock);
 	spin_unlock_irqrestore(&tbl->large_pool.lock, flags);
+
+	if (!ret)
+		*ptbl = tbl;
 
 	return ret;
 }

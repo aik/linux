@@ -1202,23 +1202,18 @@ static int tce_iommu_take_ownership(struct tce_container *container,
 	int i, j, rc = 0;
 
 	for (i = 0; i < IOMMU_TABLE_GROUP_MAX_TABLES; ++i) {
-		struct iommu_table *tbl = table_group->tables[i];
+		struct iommu_table *tbl = NULL;
 
-		if (!tbl || !tbl->it_map)
-			continue;
-
-		rc = iommu_take_ownership(tbl);
+		rc = iommu_take_ownership(table_group, i, &tbl);
 		if (rc) {
 			for (j = 0; j < i; ++j)
-				iommu_release_ownership(
-						table_group->tables[j]);
+				iommu_release_ownership(container->tables[j]);
 
 			return rc;
 		}
-	}
 
-	for (i = 0; i < IOMMU_TABLE_GROUP_MAX_TABLES; ++i)
-		container->tables[i] = table_group->tables[i];
+		container->tables[i] = tbl;
+	}
 
 	return 0;
 }
