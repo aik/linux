@@ -1449,10 +1449,12 @@ static void pnv_pci_ioda2_release_dma_pe(struct pci_dev *dev, struct pnv_ioda_pe
 		pe_warn(pe, "OPAL error %ld release DMA window\n", rc);
 
 	pnv_pci_ioda2_set_bypass(pe, false);
+#ifdef CONFIG_IOMMU_API
 	if (pe->table_group.group) {
 		iommu_group_put(pe->table_group.group);
 		BUG_ON(pe->table_group.group);
 	}
+#endif
 	iommu_tce_table_put(tbl);
 }
 
@@ -1933,8 +1935,10 @@ static void pnv_ioda_setup_bus_dma(struct pnv_ioda_pe *pe,
 	list_for_each_entry(dev, &bus->devices, bus_list) {
 		set_iommu_table_base(&dev->dev, pe->table_group.tables[0]);
 		set_dma_offset(&dev->dev, pe->tce_bypass_base);
+#ifdef CONFIG_IOMMU_API
 		if (add_to_group)
 			iommu_add_device(&dev->dev);
+#endif
 
 		if ((pe->flags & PNV_IODA_PE_BUS_ALL) && dev->subordinate)
 			pnv_ioda_setup_bus_dma(pe, dev->subordinate,
@@ -2819,13 +2823,8 @@ static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
 	/* Setup linux iommu table */
 	pe->table_group.tce32_start = 0;
 	pe->table_group.tce32_size = phb->ioda.m32_pci_base;
-	pe->table_group.max_dynamic_windows_supported =
-			IOMMU_TABLE_GROUP_MAX_TABLES;
 	pe->table_group.max_levels = POWERNV_IOMMU_MAX_LEVELS;
 	pe->table_group.pgsizes = pnv_ioda_parse_tce_sizes(phb);
-#ifdef CONFIG_IOMMU_API
-	pe->table_group.ops = &pnv_pci_ioda2_ops;
-#endif
 
 	rc = pnv_pci_ioda2_setup_default_config(pe);
 	if (rc)
@@ -2833,6 +2832,12 @@ static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
 
 	if (pe->flags & (PNV_IODA_PE_BUS | PNV_IODA_PE_BUS_ALL))
 		pnv_ioda_setup_bus_dma(pe, pe->pbus, true);
+
+#ifdef CONFIG_IOMMU_API
+	pe->table_group.max_dynamic_windows_supported =
+			IOMMU_TABLE_GROUP_MAX_TABLES;
+	pe->table_group.ops = &pnv_pci_ioda2_ops;
+#endif
 }
 
 #ifdef CONFIG_PCI_MSI
@@ -3534,10 +3539,12 @@ static void pnv_pci_ioda1_release_pe_dma(struct pnv_ioda_pe *pe)
 		return;
 
 	pnv_pci_p7ioc_tce_invalidate(tbl, tbl->it_offset, tbl->it_size, false);
+#ifdef CONFIG_IOMMU_API
 	if (pe->table_group.group) {
 		iommu_group_put(pe->table_group.group);
 		WARN_ON(pe->table_group.group);
 	}
+#endif
 
 	free_pages(tbl->it_base, get_order(tbl->it_size << 3));
 	iommu_tce_table_put(tbl);
@@ -3561,10 +3568,12 @@ static void pnv_pci_ioda2_release_pe_dma(struct pnv_ioda_pe *pe)
 #endif
 
 	pnv_pci_ioda2_set_bypass(pe, false);
+#ifdef CONFIG_IOMMU_API
 	if (pe->table_group.group) {
 		iommu_group_put(pe->table_group.group);
 		WARN_ON(pe->table_group.group);
 	}
+#endif
 
 	iommu_tce_table_put(tbl);
 }

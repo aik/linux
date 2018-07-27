@@ -318,6 +318,7 @@ void pnv_npu_release_ownership(struct pnv_ioda_pe *npe)
 		pnv_npu2_map_lpar_dev(gpdev, 0, MSR_DR | MSR_PR | MSR_HV);
 }
 
+#ifdef CONFIG_IOMMU_API
 struct pnv_ioda_pe *pnv_pci_npu_setup_iommu(struct pnv_ioda_pe *npe)
 {
 	struct pnv_phb *phb = npe->phb;
@@ -340,6 +341,7 @@ struct pnv_ioda_pe *pnv_pci_npu_setup_iommu(struct pnv_ioda_pe *npe)
 
 	return gpe;
 }
+#endif
 
 /*
  * NPU2 ATS

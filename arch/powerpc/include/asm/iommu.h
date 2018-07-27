@@ -203,12 +203,14 @@ struct iommu_table_group {
 	__u32 tce32_start;
 	__u32 tce32_size;
 	__u64 pgsizes; /* Bitmap of supported page sizes */
-	__u32 max_dynamic_windows_supported;
 	__u32 max_levels;
 
+#ifdef CONFIG_IOMMU_API
+	__u32 max_dynamic_windows_supported;
 	struct iommu_group *group;
-	struct iommu_table *tables[IOMMU_TABLE_GROUP_MAX_TABLES];
 	struct iommu_table_group_ops *ops;
+#endif
+	struct iommu_table *tables[IOMMU_TABLE_GROUP_MAX_TABLES];
 };
 
 #ifdef CONFIG_IOMMU_API
