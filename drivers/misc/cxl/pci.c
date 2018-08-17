@@ -17,7 +17,6 @@
 #include <linux/pci.h>
 #include <linux/of.h>
 #include <linux/delay.h>
-#include <asm/opal.h>
 #include <asm/msi_bitmap.h>
 #include <asm/pnv-pci.h>
 #include <asm/io.h>
