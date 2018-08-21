@@ -47,6 +47,16 @@ struct pci_controller_ops {
 	u64		(*dma_get_required_mask)(struct pci_dev *pdev);
 
 	void		(*shutdown)(struct pci_controller *hose);
+
+	int		(*npu_init_context)(struct pci_controller *hose,
+					unsigned long msr,
+					struct pci_dev *gpdev);
+	int		(*npu_destroy_context)(struct pci_controller *hose,
+					struct pci_dev *gpdev);
+	int		(*npu_map_lpar)(struct pci_controller *hose,
+					struct pci_dev *gpdev,
+					unsigned int lparid,
+					unsigned long lpcr);
 };
 
 /*

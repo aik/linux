@@ -3697,6 +3697,34 @@ void pnv_npu_disable_device(struct pci_dev *pdev)
 		eeh_ops->reset(eehpe, EEH_RESET_HOT);
 }
 
+static int pnv_pci_npu_init_context(struct pci_controller *hose,
+		unsigned long msr, struct pci_dev *gpdev)
+{
+	struct pnv_phb *nphb = hose->private_data;
+
+	return opal_npu_init_context(nphb->opal_id, current->mm->context.id, msr,
+			PCI_DEVID(gpdev->bus->number, gpdev->devfn));
+}
+
+static int pnv_pci_npu_destroy_context(struct pci_controller *hose,
+		struct pci_dev *gpdev)
+{
+	struct pnv_phb *nphb = hose->private_data;
+
+	return opal_npu_destroy_context(nphb->opal_id, current->mm->context.id,
+			PCI_DEVID(gpdev->bus->number, gpdev->devfn));
+}
+
+static int pnv_pci_npu_map_lpar(struct pci_controller *hose,
+		struct pci_dev *gpdev, unsigned int lparid, unsigned long lpcr)
+{
+	struct pnv_phb *nphb = hose->private_data;
+
+	return opal_npu_map_lpar(nphb->opal_id,
+			PCI_DEVID(gpdev->bus->number, gpdev->devfn), lparid,
+			lpcr);
+}
+
 static void pnv_pci_ioda_shutdown(struct pci_controller *hose)
 {
 	struct pnv_phb *phb = hose->private_data;
@@ -3742,6 +3770,9 @@ static const struct pci_controller_ops pnv_npu_ioda_controller_ops = {
 	.dma_set_mask		= pnv_npu_dma_set_mask,
 	.shutdown		= pnv_pci_ioda_shutdown,
 	.disable_device		= pnv_npu_disable_device,
+	.npu_init_context	= pnv_pci_npu_init_context,
+	.npu_destroy_context	= pnv_pci_npu_destroy_context,
+	.npu_map_lpar		= pnv_pci_npu_map_lpar,
 };
 
 static const struct pci_controller_ops pnv_npu_ocapi_ioda_controller_ops = {

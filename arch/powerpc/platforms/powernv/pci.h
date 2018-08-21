@@ -191,6 +191,8 @@ struct pnv_phb {
 
 		/* Do we need to explicitly flush the nest mmu? */
 		bool nmmu_flush;
+
+		struct pci_controller *hose;
 	} npu;
 
 	int p2p_target_count;

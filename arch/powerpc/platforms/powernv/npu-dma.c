@@ -758,8 +758,8 @@ struct npu_context *pnv_npu2_init_context(struct pci_dev *gpdev,
 	 * called concurrently with destroy as the OPAL call takes appropriate
 	 * locks and refcounts on init/destroy.
 	 */
-	rc = opal_npu_init_context(nphb->opal_id, mm->context.id, flags,
-				PCI_DEVID(gpdev->bus->number, gpdev->devfn));
+	rc = npu->hose->controller_ops.npu_init_context(npu->hose,
+			flags, gpdev);
 	if (rc < 0)
 		return ERR_PTR(-ENOSPC);
 
@@ -773,9 +773,8 @@ struct npu_context *pnv_npu2_init_context(struct pci_dev *gpdev,
 		if (npu_context->release_cb != cb ||
 			npu_context->priv != priv) {
 			spin_unlock(&npu_context_lock);
-			opal_npu_destroy_context(nphb->opal_id, mm->context.id,
-						PCI_DEVID(gpdev->bus->number,
-							gpdev->devfn));
+			npu->hose->controller_ops.npu_destroy_context(npu->hose,
+					gpdev);
 			return ERR_PTR(-EINVAL);
 		}
 
@@ -801,9 +800,8 @@ struct npu_context *pnv_npu2_init_context(struct pci_dev *gpdev,
 
 		if (rc) {
 			kfree(npu_context);
-			opal_npu_destroy_context(nphb->opal_id, mm->context.id,
-					PCI_DEVID(gpdev->bus->number,
-						gpdev->devfn));
+			npu->hose->controller_ops.npu_destroy_context(npu->hose,
+					gpdev);
 			return ERR_PTR(rc);
 		}
 
@@ -873,8 +871,7 @@ void pnv_npu2_destroy_context(struct npu_context *npu_context,
 							&nvlink_index)))
 		return;
 	WRITE_ONCE(npu_context->npdev[npu->index][nvlink_index], NULL);
-	opal_npu_destroy_context(nphb->opal_id, npu_context->mm->context.id,
-				PCI_DEVID(gpdev->bus->number, gpdev->devfn));
+	npu->hose->controller_ops.npu_destroy_context(npu->hose, gpdev);
 	spin_lock(&npu_context_lock);
 	removed = kref_put(&npu_context->kref, pnv_npu2_release_context);
 	spin_unlock(&npu_context_lock);
@@ -945,6 +942,7 @@ int pnv_npu2_init(struct pnv_phb *phb)
 	struct pci_dev *gpdev;
 	static int npu_index;
 	uint64_t rc = 0;
+	struct pci_controller *hose = phb->hose;
 
 	if (!atsd_threshold_dentry) {
 		atsd_threshold_dentry = debugfs_create_x64("atsd_threshold",
@@ -956,9 +954,8 @@ int pnv_npu2_init(struct pnv_phb *phb)
 	for_each_child_of_node(phb->hose->dn, dn) {
 		gpdev = pnv_pci_get_gpu_dev(get_pci_dev(dn));
 		if (gpdev) {
-			rc = opal_npu_map_lpar(phb->opal_id,
-				PCI_DEVID(gpdev->bus->number, gpdev->devfn),
-				0, 0);
+			rc = hose->controller_ops.npu_map_lpar(hose, gpdev,
+					0, 0);
 			if (rc)
 				dev_err(&gpdev->dev,
 					"Error %lld mapping device to LPAR\n",
@@ -978,6 +975,7 @@ int pnv_npu2_init(struct pnv_phb *phb)
 		return -ENOSPC;
 	max_npu2_index = npu_index;
 	phb->npu.index = npu_index;
+	phb->npu.hose = hose;
 
 	return 0;
 }
