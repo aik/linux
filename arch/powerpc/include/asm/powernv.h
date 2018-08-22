@@ -22,6 +22,7 @@ extern void pnv_npu2_destroy_context(struct npu_context *context,
 extern int pnv_npu2_handle_fault(struct npu_context *context, uintptr_t *ea,
 				unsigned long *flags, unsigned long *status,
 				int count);
+extern void pnv_npu2_devices_init(void);
 
 void pnv_tm_init(void);
 #else

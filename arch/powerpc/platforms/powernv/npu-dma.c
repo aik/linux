@@ -22,20 +22,6 @@
 #include "pci.h"
 
 /*
- * spinlock to protect initialisation of an npu_context for a particular
- * mm_struct.
- */
-static DEFINE_SPINLOCK(npu_context_lock);
-
-/*
- * When an address shootdown range exceeds this threshold we invalidate the
- * entire TLB on the GPU for the given PID rather than each specific address in
- * the range.
- */
-static uint64_t atsd_threshold = 2 * 1024 * 1024;
-static struct dentry *atsd_threshold_dentry;
-
-/*
  * Other types of TCE cache invalidation are not functional in the
  * hardware.
  */
@@ -392,6 +378,33 @@ struct pnv_ioda_pe *pnv_pci_npu_setup_iommu(struct pnv_ioda_pe *npe)
 /*
  * NPU2 ATS
  */
+static struct {
+	/*
+	 * spinlock to protect initialisation of an npu_context for
+	 * a particular mm_struct.
+	 */
+	spinlock_t context_lock;
+
+	/* Maximum index of npu2 hosts in the system. Always < NV_MAX_NPUS */
+	int max_index;
+
+	/*
+	 * When an address shootdown range exceeds this threshold we invalidate the
+	 * entire TLB on the GPU for the given PID rather than each specific address in
+	 * the range.
+	 */
+	uint64_t atsd_threshold;
+	struct dentry *atsd_threshold_dentry;
+
+} npu2_devices;
+
+void pnv_npu2_devices_init(void)
+{
+	memset(&npu2_devices, 0, sizeof(npu2_devices));
+	spin_lock_init(&npu2_devices.context_lock);
+	npu2_devices.atsd_threshold = 2 * 1024 * 1024;
+}
+
 static struct npu *npdev_to_npu(struct pci_dev *npdev)
 {
 	struct pnv_phb *nphb;
@@ -403,9 +416,6 @@ static struct npu *npdev_to_npu(struct pci_dev *npdev)
 
 /* Maximum number of nvlinks per npu */
 #define NV_MAX_LINKS 6
-
-/* Maximum index of npu2 hosts in the system. Always < NV_MAX_NPUS */
-static int max_npu2_index;
 
 struct npu_context {
 	struct mm_struct *mm;
@@ -472,7 +482,7 @@ static void mmio_invalidate_pid(struct mmio_atsd_reg mmio_atsd_reg[NV_MAX_NPUS],
 	int i;
 	unsigned long launch;
 
-	for (i = 0; i <= max_npu2_index; i++) {
+	for (i = 0; i <= npu2_devices.max_index; i++) {
 		if (mmio_atsd_reg[i].reg < 0)
 			continue;
 
@@ -503,7 +513,7 @@ static void mmio_invalidate_va(struct mmio_atsd_reg mmio_atsd_reg[NV_MAX_NPUS],
 	int i;
 	unsigned long launch;
 
-	for (i = 0; i <= max_npu2_index; i++) {
+	for (i = 0; i <= npu2_devices.max_index; i++) {
 		if (mmio_atsd_reg[i].reg < 0)
 			continue;
 
@@ -536,7 +546,7 @@ static void mmio_invalidate_wait(
 	int i, reg;
 
 	/* Wait for all invalidations to complete */
-	for (i = 0; i <= max_npu2_index; i++) {
+	for (i = 0; i <= npu2_devices.max_index; i++) {
 		if (mmio_atsd_reg[i].reg < 0)
 			continue;
 
@@ -559,7 +569,7 @@ static void acquire_atsd_reg(struct npu_context *npu_context,
 	struct npu *npu;
 	struct pci_dev *npdev;
 
-	for (i = 0; i <= max_npu2_index; i++) {
+	for (i = 0; i <= npu2_devices.max_index; i++) {
 		mmio_atsd_reg[i].reg = -1;
 		for (j = 0; j < NV_MAX_LINKS; j++) {
 			/*
@@ -593,7 +603,7 @@ static void release_atsd_reg(struct mmio_atsd_reg mmio_atsd_reg[NV_MAX_NPUS])
 {
 	int i;
 
-	for (i = 0; i <= max_npu2_index; i++) {
+	for (i = 0; i <= npu2_devices.max_index; i++) {
 		/*
 		 * We can't rely on npu_context->npdev[][] being the same here
 		 * as when acquire_atsd_reg() was called, hence we use the
@@ -683,7 +693,7 @@ static void pnv_npu2_mn_invalidate_range(struct mmu_notifier *mn,
 	struct npu_context *npu_context = mn_to_npu_context(mn);
 	unsigned long address;
 
-	if (end - start > atsd_threshold) {
+	if (end - start > npu2_devices.atsd_threshold) {
 		/*
 		 * Just invalidate the entire PID if the address range is too
 		 * large.
@@ -775,12 +785,12 @@ struct npu_context *pnv_npu2_init_context(struct pci_dev *gpdev,
 	 * We store the npu pci device so we can more easily get at the
 	 * associated npus.
 	 */
-	spin_lock(&npu_context_lock);
+	spin_lock(&npu2_devices.context_lock);
 	npu_context = mm->context.npu_context;
 	if (npu_context) {
 		if (npu_context->release_cb != cb ||
 			npu_context->priv != priv) {
-			spin_unlock(&npu_context_lock);
+			spin_unlock(&npu2_devices.context_lock);
 			npu->hose->controller_ops.npu_destroy_context(npu->hose,
 					gpdev);
 			return ERR_PTR(-EINVAL);
@@ -788,12 +798,12 @@ struct npu_context *pnv_npu2_init_context(struct pci_dev *gpdev,
 
 		WARN_ON(!kref_get_unless_zero(&npu_context->kref));
 	}
-	spin_unlock(&npu_context_lock);
+	spin_unlock(&npu2_devices.context_lock);
 
 	if (!npu_context) {
 		/*
 		 * We can set up these fields without holding the
-		 * npu_context_lock as the npu_context hasn't been returned to
+		 * npu2_devices.context_lock as the npu_context hasn't been returned to
 		 * the caller meaning it can't be destroyed. Parallel allocation
 		 * is protected against by mmap_sem.
 		 */
@@ -878,9 +888,9 @@ void pnv_npu2_destroy_context(struct npu_context *npu_context,
 		return;
 	WRITE_ONCE(npu_context->npdev[npu->index][nvlink_index], NULL);
 	npu->hose->controller_ops.npu_destroy_context(npu->hose, gpdev);
-	spin_lock(&npu_context_lock);
+	spin_lock(&npu2_devices.context_lock);
 	removed = kref_put(&npu_context->kref, pnv_npu2_release_context);
-	spin_unlock(&npu_context_lock);
+	spin_unlock(&npu2_devices.context_lock);
 
 	/*
 	 * We need to do this outside of pnv_npu2_release_context so that it is
@@ -950,9 +960,10 @@ int pnv_npu2_init(struct pnv_phb *phb)
 	uint64_t rc = 0;
 	struct pci_controller *hose = phb->hose;
 
-	if (!atsd_threshold_dentry) {
-		atsd_threshold_dentry = debugfs_create_x64("atsd_threshold",
-				   0600, powerpc_debugfs_root, &atsd_threshold);
+	if (!npu2_devices.atsd_threshold_dentry) {
+		npu2_devices.atsd_threshold_dentry = debugfs_create_x64(
+				"atsd_threshold", 0600, powerpc_debugfs_root,
+				&npu2_devices.atsd_threshold);
 	}
 
 	phb->npu.nmmu_flush =
@@ -979,7 +990,7 @@ int pnv_npu2_init(struct pnv_phb *phb)
 	npu_index++;
 	if (WARN_ON(npu_index >= NV_MAX_NPUS))
 		return -ENOSPC;
-	max_npu2_index = npu_index;
+	npu2_devices.max_index = npu_index;
 	phb->npu.index = npu_index;
 	phb->npu.hose = hose;
 

@@ -41,6 +41,7 @@
 #include <asm/firmware.h>
 #include <asm/pnv-pci.h>
 #include <asm/mmzone.h>
+#include <asm/powernv.h>
 
 #include <misc/cxl-base.h>
 
@@ -1278,6 +1279,8 @@ static void pnv_pci_ioda_setup_PEs(void)
 	struct pnv_phb *phb;
 	struct pci_bus *bus;
 	struct pci_dev *pdev;
+
+	pnv_npu2_devices_init();
 
 	list_for_each_entry_safe(hose, tmp, &hose_list, list_node) {
 		phb = hose->private_data;
