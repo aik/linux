@@ -823,15 +823,13 @@ struct npu_context *pnv_npu2_init_context(struct pci_dev *gpdev,
 	 */
 	WRITE_ONCE(npu_context->npdev[npu->index][nvlink_index], npdev);
 
-	if (!nphb->npu.nmmu_flush) {
+	npu_context->nmmu_flush = npu->nmmu_flush;
+	if (!npu->nmmu_flush)
 		/*
 		 * If we're not explicitly flushing ourselves we need to mark
 		 * the thread for global flushes
 		 */
-		npu_context->nmmu_flush = false;
 		mm_context_add_copro(mm);
-	} else
-		npu_context->nmmu_flush = true;
 
 	return npu_context;
 }
