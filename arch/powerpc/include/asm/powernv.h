@@ -25,6 +25,9 @@ extern int pnv_npu2_handle_fault(struct npu_context *context, uintptr_t *ea,
 extern void pnv_npu2_devices_init(void);
 
 void pnv_tm_init(void);
+
+extern int pnv_npu2_init(struct pci_controller *hose);
+
 #else
 static inline void powernv_set_nmmu_ptcr(unsigned long ptcr) { }
 static inline struct npu_context *pnv_npu2_init_context(struct pci_dev *gpdev,
