@@ -599,6 +599,14 @@ long kvmppc_h_put_tce_indirect(struct kvm_vcpu *vcpu,
 		ret = kvmppc_tce_validate(stt, tce);
 		if (ret != H_SUCCESS)
 			goto unlock_exit;
+	}
+
+	for (i = 0; i < npages; ++i) {
+		if (get_user(tce, tces + i)) {
+			ret = H_TOO_HARD;
+			goto unlock_exit;
+		}
+		tce = be64_to_cpu(tce);
 
 		if (kvmppc_gpa_to_ua(vcpu->kvm,
 				tce & ~(TCE_PCI_READ | TCE_PCI_WRITE),
