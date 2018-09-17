@@ -307,6 +307,24 @@ static int vfio_pci_enable(struct vfio_pci_device *vdev)
 		}
 	}
 
+	if (pdev->vendor == PCI_VENDOR_ID_NVIDIA &&
+	    pdev->device == 0x1db1 &&
+	    IS_ENABLED(CONFIG_VFIO_PCI_NVLINK2)) {
+		ret = vfio_pci_nvlink2_init(vdev);
+		if (ret)
+			dev_warn(&vdev->pdev->dev,
+				 "Failed to setup NVIDIA NV2 RAM region\n");
+	}
+
+	if (pdev->vendor == PCI_VENDOR_ID_IBM &&
+	    pdev->device == 0x04ea &&
+	    IS_ENABLED(CONFIG_VFIO_PCI_NVLINK2)) {
+		ret = vfio_pci_npu2_init(vdev);
+		if (ret)
+			dev_warn(&vdev->pdev->dev,
+				 "Failed to setup NVIDIA NV2 ATSD RAM region\n");
+	}
+
 	vfio_pci_probe_mmaps(vdev);
 
 	return 0;

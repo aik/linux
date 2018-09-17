@@ -14,6 +14,8 @@
 #include <linux/of.h>
 #include <linux/pci.h>
 #include <linux/memblock.h>
+#include <linux/kvm_host.h>
+#include <uapi/linux/kvm.h>
 
 #include <asm/debugfs.h>
 #include <asm/powernv.h>
@@ -1037,3 +1039,37 @@ fail_exit:
 
 	return ret;
 }
+
+int kvm_ppc_npu2_context(struct kvm *kvm, struct pci_dev *gpdev,
+		struct kvm_vfio_npu2_context *param)
+{
+	struct pci_controller *hose;
+	struct pci_dev *npdev;
+	int ret = -EINVAL;
+
+	npdev = pnv_pci_get_npu_dev(gpdev, 0);
+	hose = pci_bus_to_host(npdev->bus);
+
+	switch (param->op) {
+	case KVM_NPU2_OP_CONTEXT_INIT:
+		if (hose->controller_ops.npu_init_context)
+			ret = hose->controller_ops.npu_init_context(hose,
+					((unsigned long)param->msrhi << 32) |
+					param->msrlo,
+					gpdev);
+		break;
+	case KVM_NPU2_OP_CONTEXT_DESTROY:
+		if (hose->controller_ops.npu_destroy_context)
+			ret = hose->controller_ops.npu_destroy_context(hose,
+					gpdev);
+		break;
+	case KVM_NPU2_OP_LPAR_MAP:
+		if (hose->controller_ops.npu_map_lpar)
+			ret = hose->controller_ops.npu_map_lpar(hose, gpdev,
+					kvm->arch.lpid, 0);
+		break;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(kvm_ppc_npu2_context);

@@ -18,6 +18,7 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/vfio.h>
+#include <linux/pci.h>
 #include "vfio.h"
 
 #ifdef CONFIG_SPAPR_TCE_IOMMU
@@ -147,6 +148,23 @@ static void kvm_spapr_tce_release_vfio_group(struct kvm *kvm,
 
 	kvm_spapr_tce_release_iommu_group(kvm, grp);
 	iommu_group_put(grp);
+}
+
+struct kvm_vfio_find_dev_struct {
+	unsigned int devid;
+	struct pci_dev *pdev;
+};
+
+static int kvm_vfio_find_dev(struct device *dev, void *data)
+{
+	struct kvm_vfio_find_dev_struct *s = data;
+	struct pci_dev *gpdev = container_of(dev, struct pci_dev, dev);
+
+	if (PCI_DEVID(gpdev->bus->number, gpdev->devfn) != s->devid)
+		return 0;
+
+	s->pdev = gpdev;
+	return 1;
 }
 #endif
 
@@ -326,6 +344,48 @@ static int kvm_vfio_set_group(struct kvm_device *dev, long attr, u64 arg)
 
 		return ret;
 	}
+	case KVM_DEV_VFIO_PCI_DEV_NPU2_CONTEXT: {
+		struct kvm_vfio_npu2_context param;
+		struct kvm_vfio *kv = dev->private;
+		struct vfio_group *vfio_group;
+		struct fd f;
+		struct iommu_group *grp;
+		struct kvm_vfio_find_dev_struct s;
+
+		if (copy_from_user(&param, (void __user *)arg,
+					sizeof(struct kvm_vfio_npu2_context)))
+			return -EFAULT;
+
+		f = fdget(param.groupfd);
+		if (!f.file)
+			return -EBADF;
+
+		vfio_group = kvm_vfio_group_get_external_user(f.file);
+		fdput(f);
+
+		if (IS_ERR(vfio_group))
+			return PTR_ERR(vfio_group);
+
+		grp = kvm_vfio_group_get_iommu_group(vfio_group);
+		if (WARN_ON_ONCE(!grp)) {
+			kvm_vfio_group_put_external_user(vfio_group);
+			return -EIO;
+		}
+
+		mutex_lock(&kv->lock);
+		s.pdev = NULL;
+		s.devid = param.devid;
+		if (iommu_group_for_each_dev(grp, &s, kvm_vfio_find_dev))
+			ret = kvm_ppc_npu2_context(dev->kvm, s.pdev, &param);
+		else
+			ret = -ENOENT;
+		mutex_unlock(&kv->lock);
+
+		iommu_group_put(grp);
+		kvm_vfio_group_put_external_user(vfio_group);
+
+		return ret;
+	}
 #endif /* CONFIG_SPAPR_TCE_IOMMU */
 	}
 
@@ -353,6 +413,7 @@ static int kvm_vfio_has_attr(struct kvm_device *dev,
 		case KVM_DEV_VFIO_GROUP_DEL:
 #ifdef CONFIG_SPAPR_TCE_IOMMU
 		case KVM_DEV_VFIO_GROUP_SET_SPAPR_TCE:
+		case KVM_DEV_VFIO_PCI_DEV_NPU2_CONTEXT:
 #endif
 			return 0;
 		}

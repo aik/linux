@@ -1157,6 +1157,7 @@ struct kvm_device_attr {
 #define   KVM_DEV_VFIO_GROUP_ADD			1
 #define   KVM_DEV_VFIO_GROUP_DEL			2
 #define   KVM_DEV_VFIO_GROUP_SET_SPAPR_TCE		3
+#define   KVM_DEV_VFIO_PCI_DEV_NPU2_CONTEXT		4
 
 enum kvm_device_type {
 	KVM_DEV_TYPE_FSL_MPIC_20	= 1,
@@ -1181,6 +1182,19 @@ enum kvm_device_type {
 struct kvm_vfio_spapr_tce {
 	__s32	groupfd;
 	__s32	tablefd;
+};
+
+#define KVM_NPU2_OP_CONTEXT_INIT	0
+#define KVM_NPU2_OP_CONTEXT_DESTROY	1
+#define KVM_NPU2_OP_LPAR_MAP		2
+
+struct kvm_vfio_npu2_context {
+	__u32 op;
+	__s32 groupfd;
+	__u32 devid;   /* PCI_DEVID(gpdev->bus->number, gpdev->devfn) */
+	__u32 contextid;
+	__u32 msrhi;
+	__u32 msrlo;
 };
 
 /*

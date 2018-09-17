@@ -38,3 +38,7 @@ config VFIO_PCI_IGD
 	  and LPC bridge config space.
 
 	  To enable Intel IGD assignment through vfio-pci, say Y.
+
+config VFIO_PCI_NVLINK2
+	depends on VFIO_PCI
+	def_bool y if PPC_POWERNV

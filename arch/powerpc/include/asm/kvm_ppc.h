@@ -182,6 +182,9 @@ extern long kvm_spapr_tce_attach_iommu_group(struct kvm *kvm, int tablefd,
 		struct iommu_group *grp);
 extern void kvm_spapr_tce_release_iommu_group(struct kvm *kvm,
 		struct iommu_group *grp);
+struct kvm_vfio_npu2_context;
+extern int kvm_ppc_npu2_context(struct kvm *kvm, struct pci_dev *gpdev,
+		struct kvm_vfio_npu2_context *param);
 extern int kvmppc_switch_mmu_to_hpt(struct kvm *kvm);
 extern int kvmppc_switch_mmu_to_radix(struct kvm *kvm);
 extern void kvmppc_setup_partition_table(struct kvm *kvm);
