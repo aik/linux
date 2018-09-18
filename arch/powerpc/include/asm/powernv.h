@@ -28,6 +28,11 @@ void pnv_tm_init(void);
 
 extern int pnv_npu2_init(struct pci_controller *hose);
 
+/* ibm,npu2-context RTAS call opcodes */
+#define RTAS_NPU2_CONTEXT_INIT		0
+#define RTAS_NPU2_CONTEXT_DESTROY	1
+#define RTAS_NPU2_LPAR_MAP		2
+
 #else
 static inline void powernv_set_nmmu_ptcr(unsigned long ptcr) { }
 static inline struct npu_context *pnv_npu2_init_context(struct pci_dev *gpdev,

@@ -71,6 +71,7 @@
 #include <asm/isa-bridge.h>
 #include <asm/security_features.h>
 #include <asm/asm-const.h>
+#include <asm/powernv.h>
 
 #include "pseries.h"
 #include "../../../../drivers/pci/pci.h"
@@ -996,8 +997,60 @@ static int pSeries_pci_probe_mode(struct pci_bus *bus)
 	return PCI_PROBE_NORMAL;
 }
 
+static int pseries_pci_npu_init_context(struct pci_controller *hose,
+		unsigned long msr, struct pci_dev *gpdev)
+{
+	int token  = rtas_token("ibm,npu2-context");
+	int rc;
+
+	rc = rtas_call(token, 7, 1, NULL,
+			RTAS_NPU2_CONTEXT_INIT,
+			BUID_HI(hose->buid),
+			BUID_LO(hose->buid),
+			PCI_DEVID(gpdev->bus->number, gpdev->devfn),
+			current->mm->context.id,
+			upper_32_bits(msr),
+			lower_32_bits(msr));
+
+	return rc;
+}
+
+static int pseries_pci_npu_destroy_context(struct pci_controller *hose,
+		struct pci_dev *gpdev)
+{
+	int token  = rtas_token("ibm,npu2-context");
+	int rc;
+
+	rc = rtas_call(token, 5, 1, NULL,
+			RTAS_NPU2_CONTEXT_DESTROY,
+			BUID_HI(hose->buid),
+			BUID_LO(hose->buid),
+			PCI_DEVID(gpdev->bus->number, gpdev->devfn),
+			current->mm->context.id);
+
+	return rc;
+}
+
+static int pseries_pci_npu_map_lpar(struct pci_controller *hose,
+		struct pci_dev *gpdev, unsigned int lparid, unsigned long lpcr)
+{
+	int token  = rtas_token("ibm,npu2-context");
+	int rc;
+
+	rc = rtas_call(token, 4, 1, NULL,
+			RTAS_NPU2_LPAR_MAP,
+			BUID_HI(hose->buid),
+			BUID_LO(hose->buid),
+			PCI_DEVID(gpdev->bus->number, gpdev->devfn));
+
+	return rc;
+}
+
 struct pci_controller_ops pseries_pci_controller_ops = {
 	.probe_mode		= pSeries_pci_probe_mode,
+	.npu_init_context	= pseries_pci_npu_init_context,
+	.npu_destroy_context	= pseries_pci_npu_destroy_context,
+	.npu_map_lpar		= pseries_pci_npu_map_lpar,
 };
 
 define_machine(pseries) {

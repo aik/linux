@@ -29,6 +29,7 @@
 #include <asm/pci-bridge.h>
 #include <asm/prom.h>
 #include <asm/ppc-pci.h>
+#include <asm/powernv.h>
 #include "pseries.h"
 
 #if 0
@@ -237,6 +238,8 @@ static void __init pSeries_request_regions(void)
 
 void __init pSeries_final_fixup(void)
 {
+	struct pci_controller *hose;
+
 	pSeries_request_regions();
 
 	eeh_addr_cache_build();
@@ -245,6 +248,11 @@ void __init pSeries_final_fixup(void)
 	ppc_md.pcibios_sriov_enable = pseries_pcibios_sriov_enable;
 	ppc_md.pcibios_sriov_disable = pseries_pcibios_sriov_disable;
 #endif
+	pnv_npu2_devices_init();
+
+	list_for_each_entry(hose, &hose_list, list_node)
+		if (of_device_is_compatible(hose->dn, "IBM,npu-vphb"))
+			pnv_npu2_init(hose);
 }
 
 /*
