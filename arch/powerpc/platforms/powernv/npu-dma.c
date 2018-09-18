@@ -364,6 +364,8 @@ struct pnv_ioda_pe *pnv_pci_npu_setup_iommu(struct pnv_ioda_pe *npe)
 	if (!gpe || !gpdev)
 		return NULL;
 
+//	return NULL;
+
 	list_for_each_entry(npdev, &pbus->devices, bus_list) {
 		gptmp = pnv_pci_get_gpu_dev(npdev);
 
@@ -371,10 +373,89 @@ struct pnv_ioda_pe *pnv_pci_npu_setup_iommu(struct pnv_ioda_pe *npe)
 			continue;
 
 		pe_info(gpe, "Attached NPU %s\n", dev_name(&npdev->dev));
-		iommu_group_add_device(gpe->table_group.group, &npdev->dev);
+		pr_err("___K___ %s %u: %lx\n", __func__, __LINE__, (unsigned long)gpe);
+		pr_err("___K___ %s %u: %lx\n", __func__, __LINE__, (unsigned long)gpe->table_group.group);
+		if (gpe->table_group.group)
+		{
+			pr_err("___K___ %s %u: %d\n", __func__, __LINE__, iommu_group_id(gpe->table_group.group));
+			iommu_group_add_device(gpe->table_group.group, &npdev->dev);
+		}
 	}
 
 	return gpe;
+}
+
+bool pnv_pci_iommu_group_npu2_gpu_add(struct pci_dev *pdev)
+{
+	struct pci_controller *hose = pci_bus_to_host(pdev->bus);
+//	struct pnv_phb *phb = hose->private_data;
+	u32 chipid = 0;
+	struct pci_dev *d = NULL;
+	struct pnv_ioda_pe *pe = pnv_ioda_get_pe(pdev);
+
+	if (!pe)
+	{
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
+		return false;
+	}
+
+//	if (phb->model != PNV_PHB_MODEL_PHB4)
+//	{
+//		pr_err("___K___ %s %u\n", __func__, __LINE__);
+//		return false;
+//	}
+
+	if (!pnv_pci_get_npu_dev(pdev, 0))
+	{
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
+		return false;
+	}
+
+	pr_err("___K___ %s %u: %s\n", __func__, __LINE__, of_node_full_name(hose->dn));
+	if (of_property_read_u32(hose->dn, "ibm,chip-id", &chipid))
+	{
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
+		return false;
+	}
+
+	for_each_pci_dev(d) {
+		struct pci_controller *h = pci_bus_to_host(d->bus);
+		u32 id = 0;
+		struct pnv_ioda_pe *p;
+
+		if (!pnv_pci_get_npu_dev(d, 0))
+			continue;
+
+		p = pnv_ioda_get_pe(d);
+		if (!p || !p->table_group.group)
+		{
+			pr_err("___K___ %s %u\n", __func__, __LINE__);
+			continue;
+		}
+
+		if (of_property_read_u32(h->dn, "ibm,chip-id", &id))
+		{
+			pr_err("___K___ %s %u\n", __func__, __LINE__);
+			continue;
+		}
+
+		if (id != chipid)
+		{
+			pr_err("___K___ %s %u\n", __func__, __LINE__);
+			continue;
+		}
+
+		iommu_group_add_device(p->table_group.group, &pdev->dev);
+		pe->table_group = p->table_group;
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
+		return true;
+	}
+
+	pr_err("___K___ %s %u\n", __func__, __LINE__);
+
+	return false;
 }
 
 /*

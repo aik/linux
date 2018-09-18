@@ -1133,7 +1133,7 @@ static void pnv_ioda_setup_same_PE(struct pci_bus *bus, struct pnv_ioda_pe *pe)
 }
 
 /*
- * There're 2 types of PCI bus sensitive PEs: One that is compromised of
+ * There're 2 types of PCI bus sensitive PEs: One that is composed of
  * single PCI bus. Another one that contains the primary PCI bus and its
  * subordinate PCI devices and buses. The second type of PE is normally
  * orgiriated by PCIe-to-PCI bridge or PLX switch downstream ports.
@@ -1933,11 +1933,26 @@ static void pnv_ioda_setup_bus_dma(struct pnv_ioda_pe *pe,
 {
 	struct pci_dev *dev;
 
+	pr_err("___K___ %s %u: pe=%lx\n", __func__, __LINE__, (unsigned long) pe);
 	list_for_each_entry(dev, &bus->devices, bus_list) {
 		set_iommu_table_base(&dev->dev, pe->table_group.tables[0]);
 		set_dma_offset(&dev->dev, pe->tce_bypass_base);
 		if (add_to_group)
+		{
+#if 0
+			pr_err("___K___ %s %u: %s\n", __func__, __LINE__, dev_name(&dev->dev));
+			if (!pnv_pci_iommu_group_npu2_gpu_add(dev))
+			{
+				iommu_register_group(&pe->table_group, pe->phb->hose->global_number,
+						pe->pe_number);
+				pr_err("___K___ %s %u: GROUP %d\n", __func__, __LINE__,
+						iommu_group_id(pe->table_group.group));
+				iommu_add_device(&dev->dev);
+				pr_err("___K___ %s %u\n", __func__, __LINE__);
+			}
+#endif
 			iommu_add_device(&dev->dev);
+		}
 
 		if ((pe->flags & PNV_IODA_PE_BUS_ALL) && dev->subordinate)
 			pnv_ioda_setup_bus_dma(pe, dev->subordinate,
@@ -2315,6 +2330,8 @@ found:
 
 	iommu_register_group(&pe->table_group, phb->hose->global_number,
 			pe->pe_number);
+	pr_err("___K___ %s %u: GROUP %d\n", __func__, __LINE__,
+		iommu_group_id(pe->table_group.group));
 	pnv_pci_link_table_and_group(phb->hose->node, 0, tbl, &pe->table_group);
 
 	/* Grab a 32-bit TCE table */
@@ -2377,6 +2394,7 @@ found:
 		 * pnv_pci_ioda_dma_dev_setup will override it later anyway.
 		 */
 		set_iommu_table_base(&pe->pdev->dev, tbl);
+		pr_err("___K___ %s %u: %s\n", __func__, __LINE__, dev_name(&pe->pdev->dev));
 		iommu_add_device(&pe->pdev->dev);
 	} else if (pe->flags & (PNV_IODA_PE_BUS | PNV_IODA_PE_BUS_ALL))
 		pnv_ioda_setup_bus_dma(pe, pe->pbus, true);
@@ -3389,6 +3407,7 @@ static void pnv_pci_setup_bridge(struct pci_bus *bus, unsigned long type)
 	struct pnv_ioda_pe *pe;
 	bool all = (pci_pcie_type(bridge) == PCI_EXP_TYPE_PCI_BRIDGE);
 
+	pr_err("___K___ %s %u --- SETUP BRIDGE BEGIN\n", __func__, __LINE__);
 	/* Extend bridge's windows if necessary */
 	pnv_pci_fixup_bridge_resources(bus, type);
 
@@ -3430,6 +3449,7 @@ static void pnv_pci_setup_bridge(struct pci_bus *bus, unsigned long type)
 		pr_warn("%s: No DMA for PHB#%x (type %d)\n",
 			__func__, phb->hose->global_number, phb->type);
 	}
+	pr_err("___K___ %s %u --- SETUP BRIDGE END\n", __func__, __LINE__);
 }
 
 static resource_size_t pnv_pci_default_alignment(void)

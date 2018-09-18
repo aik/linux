@@ -219,6 +219,7 @@ extern void pe_level_printk(const struct pnv_ioda_pe *pe, const char *level,
 extern void pnv_npu_try_dma_set_bypass(struct pci_dev *gpdev, bool bypass);
 extern void pnv_pci_ioda2_tce_invalidate_entire(struct pnv_phb *phb, bool rm);
 extern struct pnv_ioda_pe *pnv_pci_npu_setup_iommu(struct pnv_ioda_pe *npe);
+extern bool pnv_pci_iommu_group_npu2_gpu_add(struct pci_dev *pdev);
 extern long pnv_npu_set_window(struct pnv_ioda_pe *npe, int num,
 		struct iommu_table *tbl);
 extern long pnv_npu_unset_window(struct pnv_ioda_pe *npe, int num);
