@@ -330,13 +330,38 @@ struct pnv_ioda_pe *pnv_pci_npu_setup_iommu(struct pnv_ioda_pe *npe)
 /*
  * NPU2 ATS
  */
+/* Maximum possible number of ATSD MMIO registers per NPU */
+#define NV_NMMU_ATSD_REGS 8
+
+/* An NPU descriptor, valid for POWER9 only */
+struct npu {
+	int index;
+	__be64 *mmio_atsd_regs[NV_NMMU_ATSD_REGS];
+	unsigned int mmio_atsd_count;
+
+	/* Bitmask for MMIO register usage */
+	unsigned long mmio_atsd_usage;
+
+	/* Do we need to explicitly flush the nest mmu? */
+	bool nmmu_flush;
+
+	struct list_head next;
+
+	struct pci_controller *hose;
+};
+
+static LIST_HEAD(npu2_devices);
+
 static struct npu *npdev_to_npu(struct pci_dev *npdev)
 {
-	struct pnv_phb *nphb;
+	struct pci_controller *hose = pci_bus_to_host(npdev->bus);
+	struct npu *npu;
 
-	nphb = pci_bus_to_host(npdev->bus)->private_data;
+	list_for_each_entry(npu, &npu2_devices.npu_list, next)
+		if (hose == npu->hose)
+			return npu;
 
-	return &nphb->npu;
+	return NULL;
 }
 
 /* Maximum number of nvlinks per npu */
@@ -774,7 +799,7 @@ struct npu_context *pnv_npu2_init_context(struct pci_dev *gpdev,
 	 */
 	WRITE_ONCE(npu_context->npdev[npu->index][nvlink_index], npdev);
 
-	if (!nphb->npu.nmmu_flush) {
+	if (!npu->nmmu_flush) {
 		/*
 		 * If we're not explicitly flushing ourselves we need to mark
 		 * the thread for global flushes
@@ -898,9 +923,15 @@ int pnv_npu2_init(struct pnv_phb *phb)
 	struct pci_dev *gpdev;
 	static int npu_index;
 	uint64_t rc = 0;
+	struct pci_controller *hose = phb->hose;
+	struct npu *npu;
+	int ret;
 
-	phb->npu.nmmu_flush =
-		of_property_read_bool(phb->hose->dn, "ibm,nmmu-flush");
+	npu = kzalloc(sizeof(*npu), GFP_KERNEL);
+	if (!npu)
+		return -ENOMEM;
+
+	npu->nmmu_flush = of_property_read_bool(hose->dn, "ibm,nmmu-flush");
 	for_each_child_of_node(phb->hose->dn, dn) {
 		gpdev = pnv_pci_get_gpu_dev(get_pci_dev(dn));
 		if (gpdev) {
@@ -914,18 +945,31 @@ int pnv_npu2_init(struct pnv_phb *phb)
 		}
 	}
 
-	for (i = 0; !of_property_read_u64_index(phb->hose->dn, "ibm,mmio-atsd",
+	for (i = 0; !of_property_read_u64_index(hose->dn, "ibm,mmio-atsd",
 							i, &mmio_atsd); i++)
-		phb->npu.mmio_atsd_regs[i] = ioremap(mmio_atsd, 32);
+		npu->mmio_atsd_regs[i] = ioremap(mmio_atsd, 32);
 
-	pr_info("NPU%lld: Found %d MMIO ATSD registers", phb->opal_id, i);
-	phb->npu.mmio_atsd_count = i;
-	phb->npu.mmio_atsd_usage = 0;
+	pr_info("NPU%d: Found %d MMIO ATSD registers", hose->global_number, i);
+	npu->mmio_atsd_count = i;
+	npu->mmio_atsd_usage = 0;
 	npu_index++;
-	if (WARN_ON(npu_index >= NV_MAX_NPUS))
-		return -ENOSPC;
+	if (WARN_ON(npu_index >= NV_MAX_NPUS)) {
+		ret = -ENOSPC;
+		goto fail_exit;
+	}
 	max_npu2_index = npu_index;
-	phb->npu.index = npu_index;
+	npu->index = npu_index;
+	npu->hose = hose;
+
+	list_add(&npu->next, &npu2_devices);
 
 	return 0;
+
+fail_exit:
+	for (i = 0; i < npu->mmio_atsd_count; ++i)
+		iounmap(npu->mmio_atsd_regs[i]);
+
+	kfree(npu);
+
+	return ret;
 }
