@@ -129,5 +129,6 @@ extern void pcibios_scan_phb(struct pci_controller *hose);
 
 extern struct pci_dev *pnv_pci_get_gpu_dev(struct pci_dev *npdev);
 extern struct pci_dev *pnv_pci_get_npu_dev(struct pci_dev *gpdev, int index);
+extern int pnv_npu2_init(struct pci_controller *hose);
 
 #endif /* __ASM_POWERPC_PCI_H */

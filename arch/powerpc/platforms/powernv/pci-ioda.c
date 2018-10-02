@@ -1282,8 +1282,11 @@ static void pnv_pci_ioda_setup_PEs(void)
 			/* PE#0 is needed for error reporting */
 			pnv_ioda_reserve_pe(phb, 0);
 			pnv_ioda_setup_npu_PEs(hose->bus);
-			if (phb->model == PNV_PHB_MODEL_NPU2)
-				pnv_npu2_init(phb);
+			if (phb->model == PNV_PHB_MODEL_NPU2) {
+				pnv_npu2_init(hose);
+				pnv_npu2_map_lpar_phb(phb,
+						MSR_DR | MSR_PR | MSR_HV);
+			}
 		}
 		if (phb->type == PNV_PHB_NPU_OCAPI) {
 			bus = hose->bus;
