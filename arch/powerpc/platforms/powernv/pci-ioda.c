@@ -2728,13 +2728,19 @@ static void pnv_ioda2_npu_take_ownership(struct iommu_table_group *table_group)
 	pnv_ioda2_take_ownership(table_group);
 }
 
+static void pnv_ioda2_npu_release_ownership(struct iommu_table_group *table_group)
+{
+	pnv_npu_release_ownership(gpe_table_group_to_npe(table_group));
+	pnv_ioda2_release_ownership(table_group);
+}
+
 static struct iommu_table_group_ops pnv_pci_ioda2_npu_ops = {
 	.get_table_size = pnv_pci_ioda2_get_table_size,
 	.create_table = pnv_pci_ioda2_create_table_userspace,
 	.set_window = pnv_pci_ioda2_npu_set_window,
 	.unset_window = pnv_pci_ioda2_npu_unset_window,
 	.take_ownership = pnv_ioda2_npu_take_ownership,
-	.release_ownership = pnv_ioda2_release_ownership,
+	.release_ownership = pnv_ioda2_npu_release_ownership,
 };
 
 static void pnv_pci_ioda_setup_iommu_api(void)
