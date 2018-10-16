@@ -84,6 +84,22 @@ static __be64 *pnv_tce(struct iommu_table *tbl, bool user, long idx, bool alloc)
 	return tmp + idx;
 }
 
+void pnv_pci_tce_invalidate(struct iommu_table *tbl,
+		unsigned long index, unsigned long npages, bool rm)
+{
+	struct iommu_table_group_link *tgl;
+
+	list_for_each_entry_lockless(tgl, &tbl->it_group_list, next) {
+		struct pnv_ioda_pe *pe = container_of(tgl->table_group,
+			struct pnv_ioda_pe, table_group);
+
+		if (!pe->phb->tce_invalidate)
+			continue;
+
+		pe->phb->tce_invalidate(pe->phb, pe, tbl, index, npages, rm);
+	}
+}
+
 int pnv_tce_build(struct iommu_table *tbl, long index, long npages,
 		unsigned long uaddr, enum dma_data_direction direction,
 		unsigned long attrs)

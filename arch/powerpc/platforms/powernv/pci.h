@@ -117,6 +117,9 @@ struct pnv_phb {
 	int (*get_pe_state)(struct pnv_phb *phb, int pe_no);
 	void (*freeze_pe)(struct pnv_phb *phb, int pe_no);
 	int (*unfreeze_pe)(struct pnv_phb *phb, int pe_no, int opt);
+	void (*tce_invalidate)(struct pnv_phb *phb, struct pnv_ioda_pe *pe,
+			struct iommu_table *tbl, unsigned long index,
+			unsigned long npages, bool realmode);
 
 	struct {
 		/* Global bridge info */
@@ -216,12 +219,13 @@ extern void pe_level_printk(const struct pnv_ioda_pe *pe, const char *level,
 
 /* Nvlink functions */
 extern void pnv_npu_try_dma_set_bypass(struct pci_dev *gpdev, bool bypass);
-extern void pnv_pci_ioda2_tce_invalidate_entire(struct pnv_phb *phb, bool rm);
-extern struct iommu_table_group *pnv_try_setup_npu_table_group(
-		struct pnv_ioda_pe *pe);
-extern struct iommu_table_group *pnv_npu_compound_attach(
-		struct pnv_ioda_pe *pe);
-extern void pnv_npu2_map_lpar_phb(struct pnv_phb *nphb, unsigned long msr);
+extern struct pnv_ioda_pe *pnv_pci_npu_setup_iommu(struct pnv_ioda_pe *npe);
+extern long pnv_npu_set_window(struct pnv_ioda_pe *npe, int num,
+		struct iommu_table *tbl);
+extern long pnv_npu_unset_window(struct pnv_ioda_pe *npe, int num);
+extern void pnv_npu_take_ownership(struct pnv_ioda_pe *npe);
+extern void pnv_npu_release_ownership(struct pnv_ioda_pe *npe);
+extern int pnv_npu2_init(struct pnv_phb *phb);
 
 /* pci-ioda-tce.c */
 #define POWERNV_IOMMU_DEFAULT_LEVELS	1
@@ -251,5 +255,11 @@ extern void pnv_pci_unlink_table_and_group(struct iommu_table *tbl,
 extern void pnv_pci_setup_iommu_table(struct iommu_table *tbl,
 		void *tce_mem, u64 tce_size,
 		u64 dma_offset, unsigned int page_shift);
+extern void pnv_pci_tce_invalidate(struct iommu_table *tbl,
+		unsigned long index, unsigned long npages, bool realmode);
+static inline void pnv_pci_ioda_tce_invalidate_pe(struct pnv_ioda_pe *pe)
+{
+	pe->phb->tce_invalidate(pe->phb, pe, NULL, 0, 0, false);
+}
 
 #endif /* __POWERNV_PCI_H */
