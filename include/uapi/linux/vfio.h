@@ -353,6 +353,20 @@ struct vfio_region_gfx_edid {
 #define VFIO_DEVICE_GFX_LINK_STATE_DOWN  2
 };
 
+/* 10de vendor sub-type
+ *
+ * NVIDIA GPU NVlink2 RAM is coherent RAM mapped onto the host address space.
+ */
+#define VFIO_REGION_SUBTYPE_NVIDIA_NVLINK2_RAM	(1)
+
+/*
+ * 1014 vendor sub-type
+ *
+ * IBM NPU NVlink2 ATSD (Address Translation Shootdown) register of NPU
+ * to do TLB invalidation on a GPU.
+ */
+#define VFIO_REGION_SUBTYPE_IBM_NVLINK2_ATSD	(1)
+
 /*
  * The MSIX mappable capability informs that MSIX data of a BAR can be mmapped
  * which allows direct access to non-MSIX registers which happened to be within
@@ -362,6 +376,18 @@ struct vfio_region_gfx_edid {
  * VFIO_DEVICE_SET_IRQS interface must still be used for MSIX configuration.
  */
 #define VFIO_REGION_INFO_CAP_MSIX_MAPPABLE	3
+
+/*
+ * Capability with compressed real address (aka SSA - small system address)
+ * where GPU RAM is mapped on a system bus. Used by a GPU for DMA routing.
+ */
+#define VFIO_REGION_INFO_CAP_NPU2		4
+
+struct vfio_region_info_cap_npu2 {
+	struct vfio_info_cap_header header;
+	__u64 tgt;
+	/* size is defined in VFIO_REGION_SUBTYPE_NVIDIA_NVLINK2_RAM */
+};
 
 /**
  * VFIO_DEVICE_GET_IRQ_INFO - _IOWR(VFIO_TYPE, VFIO_BASE + 9,
