@@ -1045,6 +1045,8 @@ int pnv_npu2_unmap_lpar_dev(struct pci_dev *gpdev)
 	if (ret)
 		dev_err(&gpdev->dev, "Error %d mapping device to LPAR\n", ret);
 
+	opal_purge_cache();
+
 	return ret;
 }
 EXPORT_SYMBOL_GPL(pnv_npu2_unmap_lpar_dev);
