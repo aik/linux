@@ -482,6 +482,7 @@ static int tce_iommu_clear(struct tce_container *container,
 	long ret;
 	enum dma_data_direction direction;
 	unsigned long lastentry = entry + pages;
+	unsigned long skipped = 0;
 
 	for ( ; entry < lastentry; ++entry) {
 		if (tbl->it_indirect_levels && tbl->it_userspace) {
@@ -496,6 +497,8 @@ static int tce_iommu_clear(struct tce_container *container,
 			__be64 *pua = IOMMU_TABLE_USERSPACE_ENTRY_RO(tbl,
 					entry);
 			if (!pua) {
+				skipped += tbl->it_level_size -
+					(entry & (tbl->it_level_size - 1));
 				/* align to level_size which is power of two */
 				entry |= tbl->it_level_size - 1;
 				continue;
@@ -521,6 +524,9 @@ static int tce_iommu_clear(struct tce_container *container,
 
 		tce_iommu_unuse_page(container, oldhpa);
 	}
+
+	if (skipped)
+		pr_err("___K___ %s %u: skipped = %ld\n", __func__, __LINE__, skipped);
 
 	return 0;
 }

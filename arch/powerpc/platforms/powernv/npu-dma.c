@@ -23,6 +23,9 @@
 
 #include "pci.h"
 
+#undef dev_dbg
+#define dev_dbg dev_err
+
 /*
  * spinlock to protect initialisation of an npu_context for a particular
  * mm_struct.
@@ -313,6 +316,7 @@ static void pnv_npu_take_ownership(struct iommu_table_group *table_group)
 	}
 	pnv_pci_ioda_tce_invalidate_pe(npe);
 
+	pr_err("___K___ (%u) %s %u\n", smp_processor_id(), __func__, __LINE__);
 	if (gpe && gpdev)
 		pnv_npu2_unmap_lpar_dev(gpdev);
 }
@@ -324,6 +328,7 @@ static void pnv_npu_release_ownership(struct iommu_table_group *table_group)
 	struct pci_dev *gpdev = NULL;
 	struct pnv_ioda_pe *gpe = get_gpu_pci_dev_and_pe(npe, &gpdev);
 
+	pr_err("___K___ (%u) %s %u\n", smp_processor_id(), __func__, __LINE__);
 	if (gpe && gpdev)
 		pnv_npu2_map_lpar_dev(gpdev, 0, MSR_DR | MSR_PR | MSR_HV);
 }
@@ -1160,6 +1165,7 @@ int pnv_npu2_map_lpar_dev(struct pci_dev *gpdev, unsigned int lparid,
 	ret = opal_npu_map_lpar(nphb->opal_id,
 			PCI_DEVID(gpdev->bus->number, gpdev->devfn), lparid,
 			0 /* LPCR bits */);
+	pr_err("___K___ (%u) %s %u: ret=%x\n", smp_processor_id(), __func__, __LINE__, ret);
 	if (ret) {
 		dev_err(&gpdev->dev, "Error %d mapping device to LPAR\n", ret);
 		return ret;
@@ -1169,8 +1175,11 @@ int pnv_npu2_map_lpar_dev(struct pci_dev *gpdev, unsigned int lparid,
 			nphb->opal_id, msr);
 	ret = opal_npu_init_context(nphb->opal_id, 0/*__unused*/, msr,
 			PCI_DEVID(gpdev->bus->number, gpdev->devfn));
-	if (ret)
+	pr_err("___K___ (%u) %s %u: ret=%x\n", smp_processor_id(), __func__, __LINE__, ret);
+	if (ret < 0)
 		dev_err(&gpdev->dev, "Failed to init context: %d\n", ret);
+	else
+		ret = 0;
 
 	return 0;
 }
@@ -1187,6 +1196,8 @@ int pnv_npu2_unmap_lpar_dev(struct pci_dev *gpdev)
 			nphb->opal_id);
 	ret = opal_npu_destroy_context(nphb->opal_id, 0/*__unused*/,
 			PCI_DEVID(gpdev->bus->number, gpdev->devfn));
+
+	pr_err("___K___ (%u) %s %u: ret=%x\n", smp_processor_id(), __func__, __LINE__, ret);
 	if (ret < 0) {
 		dev_err(&gpdev->dev, "Failed to destroy context: %d\n", ret);
 		return ret;
@@ -1197,6 +1208,7 @@ int pnv_npu2_unmap_lpar_dev(struct pci_dev *gpdev)
 	ret = opal_npu_map_lpar(nphb->opal_id,
 			PCI_DEVID(gpdev->bus->number, gpdev->devfn), 0 /*LPID*/,
 			0 /* LPCR bits */);
+	pr_err("___K___ (%u) %s %u: ret=%x\n", smp_processor_id(), __func__, __LINE__, ret);
 	if (ret)
 		dev_err(&gpdev->dev, "Error %d mapping device to LPAR\n", ret);
 
