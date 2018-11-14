@@ -3678,6 +3678,23 @@ static void dump_tlb_book3e(void)
 }
 #endif /* CONFIG_PPC_BOOK3E */
 
+static int xmon_panic_event(struct notifier_block *self, unsigned long val,
+		void *data)
+{
+	//if (panic_timeout)
+	//return NOTIFY_DONE;
+
+	xmon_printf("Entering xmon due to panic: %s\n", (char *)data);
+	xmon(NULL);
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block xmon_panic_event_nb = {
+	.notifier_call = xmon_panic_event,
+	.priority = INT_MAX,
+};
+
 static void xmon_init(int enable)
 {
 	if (enable) {
@@ -3688,6 +3705,8 @@ static void xmon_init(int enable)
 		__debugger_iabr_match = xmon_iabr_match;
 		__debugger_break_match = xmon_break_match;
 		__debugger_fault_handler = xmon_fault_handler;
+		atomic_notifier_chain_register(&panic_notifier_list,
+				&xmon_panic_event_nb);
 	} else {
 		__debugger = NULL;
 		__debugger_ipi = NULL;
