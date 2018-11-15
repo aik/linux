@@ -1287,3 +1287,44 @@ int pnv_npu2_unmap_lpar_dev(struct pci_dev *gpdev)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(pnv_npu2_unmap_lpar_dev);
+#if 0
+u64 pnv_npu2_alloc_atsd(struct pci_dev *npdev)
+{
+	int ret;
+	struct vfio_pci_npu2_data *data;
+	struct device_node *nvlink_dn;
+	u32 nvlink_index = 0;
+	struct pci_dev *npdev = vdev->pdev;
+	struct device_node *npu_node = pci_device_to_OF_node(npdev);
+	struct pci_controller *hose = pci_bus_to_host(npdev->bus);
+	u64 mmio_atsd = 0;
+	u64 tgt = 0;
+
+	/*
+	 * NPU2 normally has 8 ATSD registers (for concurrency) and 6 links
+	 * so we can allocate one register per link.
+	 * Since skiboot only exposes one (a bug), use this as a fallback
+	 * which is safe as we do not split GPUs attached to the same NPU.
+	 */
+	nvlink_dn = of_parse_phandle(npdev->dev.of_node, "ibm,nvlink", 0);
+	if (WARN_ON(of_property_read_u32(nvlink_dn, "ibm,npu-link-index",
+			&nvlink_index)))
+		return -ENODEV;
+
+	if (of_property_read_u64_index(hose->dn, "ibm,mmio-atsd", nvlink_index,
+			&mmio_atsd)) {
+		if (of_property_read_u64_index(hose->dn, "ibm,mmio-atsd", 0,
+					&mmio_atsd)) {
+			dev_warn(&vdev->pdev->dev, "No ATSD found\n");
+			return -EFAULT;
+		}
+		dev_warn(&vdev->pdev->dev, "Fallback to ATSD#0\n");
+	}
+
+	return mmio_atsd;
+}
+
+void pnv_npu2_alloc_atsd(struct pci_dev *npdev, u64 mmio_atsd)
+{
+}
+#endif
