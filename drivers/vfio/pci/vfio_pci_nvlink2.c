@@ -25,12 +25,35 @@
 #include <asm/kvm_ppc.h>
 #include "vfio_pci_private.h"
 
+#if 0
 #define CREATE_TRACE_POINTS
 #include "trace.h"
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(vfio_pci_nvgpu_mmap_fault);
 EXPORT_TRACEPOINT_SYMBOL_GPL(vfio_pci_nvgpu_mmap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(vfio_pci_npu2_mmap);
+#else
+void trace_vfio_pci_nvgpu_mmap_fault(struct pci_dev *pdev, unsigned long hpa, unsigned long ua,
+		vm_fault_t ret)
+{
+	if (((hpa & 0xfffffffffUL) > 0x400000000UL - 0x10000 * 16) ||
+			(ret != VM_FAULT_NOPAGE))
+		pr_err("%s: %s: %lx -> %lx ret=%d", __func__, dev_name(&pdev->dev), hpa,
+			ua, ret);
+}
+void trace_vfio_pci_nvgpu_mmap(struct pci_dev *pdev, unsigned long hpa, unsigned long ua,
+		unsigned long size, int ret)
+{
+	pr_err("%s: %s: %lx -> %lx size=%lx ret=%d", __func__, dev_name(&pdev->dev), hpa,
+			ua, size, ret);
+}
+void trace_vfio_pci_npu2_mmap(struct pci_dev *pdev, unsigned long hpa, unsigned long ua,
+		unsigned long size, int ret)
+{
+	pr_err("%s: %s: %lx -> %lx size=%lx ret=%d", __func__, dev_name(&pdev->dev), hpa,
+			ua, size, ret);
+}
+#endif
 
 struct vfio_pci_nvgpu_data {
 	unsigned long gpu_hpa; /* GPU RAM physical address */
@@ -85,10 +108,13 @@ static void vfio_pci_nvgpu_release(struct vfio_pci_device *vdev,
 	vfio_unregister_notifier(&data->gpdev->dev, VFIO_GROUP_NOTIFY,
 			&data->group_notifier);
 
+	pr_err("___K___ (%u) %s %u\n", smp_processor_id(), __func__, __LINE__);
 	pnv_npu2_unmap_lpar_dev(data->gpdev);
 
 	memunmap(data->base);
 	kfree(data);
+
+	pr_err("___K___ %s %u\n", __func__, __LINE__);
 }
 
 static vm_fault_t vfio_pci_nvgpu_mmap_fault(struct vm_fault *vmf)
@@ -181,7 +207,10 @@ static int vfio_pci_nvgpu_group_notifier(struct notifier_block *nb,
 	if (action == VFIO_GROUP_NOTIFY_SET_KVM && kvm &&
 			pnv_npu2_map_lpar_dev(data->gpdev,
 				kvm->arch.lpid, MSR_DR | MSR_PR))
+	{
+		pr_err("___K___ (%u) %s %u\n", smp_processor_id(), __func__, __LINE__);
 		return NOTIFY_BAD;
+	}
 
 	return NOTIFY_OK;
 }
@@ -201,25 +230,41 @@ int vfio_pci_nvdia_v100_nvlink2_init(struct vfio_pci_device *vdev)
 	 * PCI config space does not tell us about NVLink presense but
 	 * platform does, use this.
 	 */
+	pr_err("___K___ %s %u\n", __func__, __LINE__);
 	npu_dev = pnv_pci_get_npu_dev(vdev->pdev, 0);
 	if (!npu_dev)
+	{
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
 		return -ENODEV;
+	}
 
 	npu_node = pci_device_to_OF_node(npu_dev);
 	if (!npu_node)
+	{
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
 		return -EINVAL;
+	}
 
 	if (of_property_read_u32(npu_node, "memory-region", &mem_phandle))
+	{
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
 		return -EINVAL;
+	}
 
 	mem_node = of_find_node_by_phandle(mem_phandle);
 	if (!mem_node)
+	{
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
 		return -EINVAL;
+	}
 
 	if (of_property_read_variable_u64_array(mem_node, "reg", reg,
 				ARRAY_SIZE(reg), ARRAY_SIZE(reg)) !=
 			ARRAY_SIZE(reg))
+	{
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
 		return -EINVAL;
+	}
 
 	if (of_property_read_u64(npu_node, "ibm,device-tgt-addr", &tgt)) {
 		dev_warn(&vdev->pdev->dev, "No ibm,device-tgt-addr found\n");
@@ -228,7 +273,10 @@ int vfio_pci_nvdia_v100_nvlink2_init(struct vfio_pci_device *vdev)
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (!data)
+	{
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
 		return -ENOMEM;
+	}
 
 	data->gpu_hpa = reg[0];
 	data->gpu_tgt = tgt;
@@ -236,6 +284,7 @@ int vfio_pci_nvdia_v100_nvlink2_init(struct vfio_pci_device *vdev)
 	data->base = memremap(data->gpu_hpa, data->size, MEMREMAP_WB);
 	if (!data->base) {
 		ret = -ENOMEM;
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
 		goto free_exit;
 	}
 
@@ -248,7 +297,10 @@ int vfio_pci_nvdia_v100_nvlink2_init(struct vfio_pci_device *vdev)
 	ret = vfio_register_notifier(&data->gpdev->dev, VFIO_GROUP_NOTIFY,
 			&events, &data->group_notifier);
 	if (ret)
+	{
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
 		goto free_exit;
+	}
 
 	/*
 	 * We have just set KVM, we do not need the listener anymore.
@@ -268,8 +320,13 @@ int vfio_pci_nvdia_v100_nvlink2_init(struct vfio_pci_device *vdev)
 			VFIO_REGION_INFO_FLAG_WRITE |
 			VFIO_REGION_INFO_FLAG_MMAP,
 			data);
+	pr_err("___K___ %s %u: %s %lx..%lx ret=%d\n", __func__, __LINE__,
+		dev_name(&vdev->pdev->dev), data->gpu_hpa, data->gpu_hpa + data->size - 1, ret);
 	if (ret)
+	{
+		pr_err("___K___ %s %u\n", __func__, __LINE__);
 		goto free_exit;
+	}
 
 	return 0;
 free_exit:
@@ -320,7 +377,10 @@ static int vfio_pci_npu2_mmap(struct vfio_pci_device *vdev,
 	unsigned long req_len = vma->vm_end - vma->vm_start;
 
 	if (req_len != PAGE_SIZE)
+	{
+		pr_err("___K___ %s %u: req_len=%lu\n", __func__, __LINE__, req_len);
 		return -EINVAL;
+	}
 
 	vma->vm_flags |= VM_PFNMAP;
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
@@ -427,6 +487,8 @@ int vfio_pci_ibm_npu2_init(struct vfio_pci_device *vdev)
 		goto free_exit;
 	}
 
+	pr_err("___K___ %s %u: Register NPU2 %lx tgt=%lx\n", __func__, __LINE__, data->mmio_atsd,
+			data->gpu_tgt);
 	ret = vfio_pci_register_dev_region(vdev,
 			PCI_VENDOR_ID_IBM | VFIO_REGION_TYPE_PCI_VENDOR_TYPE,
 			VFIO_REGION_SUBTYPE_IBM_NVLINK2_ATSD,
@@ -439,10 +501,12 @@ int vfio_pci_ibm_npu2_init(struct vfio_pci_device *vdev)
 	if (ret)
 		goto free_exit;
 
+	pr_err("___K___ %s %u: %d\n", __func__, __LINE__, ret);
 	return 0;
 
 free_exit:
 	kfree(data);
+	pr_err("___K___ %s %u: %d\n", __func__, __LINE__, ret);
 
 	return ret;
 }

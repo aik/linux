@@ -719,6 +719,15 @@ static void iommu_table_free(struct kref *kref)
 
 	tbl = container_of(kref, struct iommu_table, it_kref);
 
+	pr_err("___K___ %s %u:"
+		" NULL=%ld !NULL=%ld allocs=%ld"
+		" NULL=%ld !NULL=%ld allocs=%ld -- %ld"
+		"\n", __func__, __LINE__,
+		atomic64_read(&tbl->it_null), atomic64_read(&tbl->it_notnull), atomic64_read(&tbl->it_alloc),
+		atomic64_read(&tbl->it_null2), atomic64_read(&tbl->it_notnull2), atomic64_read(&tbl->it_alloc2),
+		atomic64_read(&tbl->it_dbg)
+		);
+
 	if (tbl->it_ops->free)
 		tbl->it_ops->free(tbl);
 
