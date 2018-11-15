@@ -63,13 +63,27 @@ static __be64 *pnv_tce(struct iommu_table *tbl, bool user, long idx, bool alloc)
 			__be64 *tmp2;
 
 			if (!alloc)
+			{
+				if (user)
+					atomic64_inc(&tbl->it_null2);
+				else
+					atomic64_inc(&tbl->it_null);
 				return NULL;
+			}
 
 			tmp2 = pnv_alloc_tce_level(tbl->it_nid,
 					ilog2(tbl->it_level_size) + 3);
 			if (!tmp2)
+			{
+				atomic64_inc(&tbl->it_null);
+				pr_err("___K___ %s %u\n", __func__, __LINE__);
 				return NULL;
+			}
 
+			if (user)
+				atomic64_inc(&tbl->it_alloc2);
+			else
+				atomic64_inc(&tbl->it_alloc);
 			tmp[n] = cpu_to_be64(__pa(tmp2) |
 					TCE_PCI_READ | TCE_PCI_WRITE);
 		}
@@ -80,6 +94,11 @@ static __be64 *pnv_tce(struct iommu_table *tbl, bool user, long idx, bool alloc)
 		mask >>= shift;
 		--level;
 	}
+
+	if (user)
+		atomic64_inc(&tbl->it_notnull2);
+	else
+		atomic64_inc(&tbl->it_notnull);
 
 	return tmp + idx;
 }

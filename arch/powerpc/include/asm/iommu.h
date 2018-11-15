@@ -124,6 +124,9 @@ struct iommu_table {
 	struct iommu_table_ops *it_ops;
 	struct kref    it_kref;
 	int it_nid;
+	atomic64_t it_null, it_notnull, it_alloc;
+	atomic64_t it_null2, it_notnull2, it_alloc2;
+	atomic64_t it_dbg;
 };
 
 #define IOMMU_TABLE_USERSPACE_ENTRY_RO(tbl, entry) \
