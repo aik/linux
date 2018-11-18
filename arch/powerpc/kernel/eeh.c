@@ -407,8 +407,8 @@ static int eeh_phb_check_failure(struct eeh_pe *pe)
 	eeh_pe_mark_isolated(phb_pe);
 	eeh_serialize_unlock(flags);
 
-	pr_err("EEH: PHB#%x failure detected, location: %s\n",
-		phb_pe->phb->global_number, eeh_pe_loc_get(phb_pe));
+	pr_err("EEH: PHB#%x failure detected, location: %s ret=%X\n",
+		phb_pe->phb->global_number, eeh_pe_loc_get(phb_pe), ret);
 	dump_stack();
 	eeh_send_failure_event(phb_pe);
 
