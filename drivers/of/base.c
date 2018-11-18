@@ -201,14 +201,17 @@ void __init of_core_init(void)
 	if (of_root)
 		proc_symlink("device-tree", NULL, "/sys/firmware/devicetree/base");
 }
-
+bool aikdbg = false;
+EXPORT_SYMBOL(aikdbg);
 static struct property *__of_find_property(const struct device_node *np,
 					   const char *name, int *lenp)
 {
 	struct property *pp;
 
-	if (!np)
-		return NULL;
+	if (!np) {
+		pp = NULL;
+		goto mydbg;
+	}
 
 	for (pp = np->properties; pp; pp = pp->next) {
 		if (of_prop_cmp(pp->name, name) == 0) {
@@ -218,6 +221,19 @@ static struct property *__of_find_property(const struct device_node *np,
 		}
 	}
 
+	if (aikdbg) {
+mydbg:
+		if (pp)
+			pr_err("___K___ (%u) %s %u: %s: found %s\n", smp_processor_id(),
+					__func__, __LINE__,
+					np->full_name,
+					pp->name);
+		else
+			pr_err("___K___ (%u) %s %u: %s: NOT found %s\n", smp_processor_id(),
+					__func__, __LINE__,
+					np ? np->full_name : "NP==NULL!",
+					name);
+	}
 	return pp;
 }
 
