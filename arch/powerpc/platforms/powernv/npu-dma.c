@@ -23,6 +23,9 @@
 
 #include "pci.h"
 
+#undef dev_dbg
+#define dev_dbg dev_err
+
 /*
  * spinlock to protect initialisation of an npu_context for a particular
  * mm_struct.
@@ -323,6 +326,7 @@ static void pnv_npu_take_ownership(struct iommu_table_group *table_group)
 	}
 	pnv_pci_ioda2_tce_invalidate_entire(npe->phb, false);
 
+	pr_err("___K___ (%u) %s %u\n", smp_processor_id(), __func__, __LINE__);
 	get_gpu_pci_dev_and_pe(npe, &gpdev);
 	if (gpdev)
 		pnv_npu2_unmap_lpar_dev(gpdev);
@@ -334,6 +338,7 @@ static void pnv_npu_release_ownership(struct iommu_table_group *table_group)
 			table_group);
 	struct pci_dev *gpdev = NULL;
 
+	pr_err("___K___ (%u) %s %u\n", smp_processor_id(), __func__, __LINE__);
 	get_gpu_pci_dev_and_pe(npe, &gpdev);
 	if (gpdev)
 		pnv_npu2_map_lpar_dev(gpdev, 0, MSR_DR | MSR_PR | MSR_HV);
@@ -719,6 +724,9 @@ static void mmio_atsd_regs_write(struct mmio_atsd_reg
 			continue;
 
 		npu = mmio_atsd_reg[i].npu;
+		pr_err("___K___ (%u) %s %u: %lx %lx\n", smp_processor_id(), __func__, __LINE__,
+				(unsigned long) (npu->mmio_atsd_regs[reg] + offset),
+				(unsigned long) val);
 		__raw_writeq_be(val, npu->mmio_atsd_regs[reg] + offset);
 	}
 }
@@ -728,6 +736,7 @@ static void mmio_invalidate_pid(struct mmio_atsd_reg mmio_atsd_reg[NV_MAX_NPUS],
 {
 	unsigned long launch = get_atsd_launch_val(pid, MMU_PAGE_COUNT);
 
+	pr_err("___K___ (%u) %s %u: pid=%lx ENTIRE\n", smp_processor_id(), __func__, __LINE__, pid);
 	/* Invalidating the entire process doesn't use a va */
 	mmio_atsd_regs_write(mmio_atsd_reg, XTS_ATSD_LAUNCH, launch);
 }
@@ -738,6 +747,7 @@ static void mmio_invalidate_range(struct mmio_atsd_reg
 {
 	unsigned long launch = get_atsd_launch_val(pid, psize);
 
+	pr_err("___K___ (%u) %s %u: pid=%ld %lx %lx\n", smp_processor_id(), __func__, __LINE__, pid, start, psize);
 	/* Write all VAs first */
 	mmio_atsd_regs_write(mmio_atsd_reg, XTS_ATSD_AVA, start);
 
@@ -764,8 +774,17 @@ static void mmio_invalidate_wait(
 		/* Wait for completion */
 		npu = mmio_atsd_reg[i].npu;
 		reg = mmio_atsd_reg[i].reg;
-		while (__raw_readq(npu->mmio_atsd_regs[reg] + XTS_ATSD_STAT))
+		while (1) {
+			u64 rr = __raw_readq(npu->mmio_atsd_regs[reg] + XTS_ATSD_STAT);
+			pr_err("___K___ (%u) %s %u: %lx %lx\n", smp_processor_id(), __func__, __LINE__,
+				(unsigned long) (npu->mmio_atsd_regs[reg] + XTS_ATSD_STAT),
+				(unsigned long) rr);
+			if (!rr)
+				break;
 			cpu_relax();
+		}
+//		while (__raw_readq(npu->mmio_atsd_regs[reg] + XTS_ATSD_STAT))
+//			cpu_relax();
 	}
 }
 
@@ -803,6 +822,9 @@ static void acquire_atsd_reg(struct npu_context *npu_context,
 				mmio_atsd_reg[i].reg = get_mmio_atsd_reg(npu);
 				cpu_relax();
 			}
+			pr_err("___K___ (%u) %s %u: %d %d %lx\n", smp_processor_id(), __func__, __LINE__,
+					i, mmio_atsd_reg[i].reg,
+					(unsigned long) npu->mmio_atsd_regs[mmio_atsd_reg[i].reg]);
 			break;
 		}
 	}
@@ -843,6 +865,7 @@ static void mmio_invalidate(struct npu_context *npu_context,
 	unsigned long end = start + size - 1;
 	int atsd_psize = MMU_PAGE_COUNT;
 
+	pr_err("___K___ (%u) %s %u: %lx..%lx\n", smp_processor_id(), __func__, __LINE__, start, start + size - 1);
 	/*
 	 * Convert the input range into one of the supported sizes. If the range
 	 * doesn't fit, use the next larger supported size. Invalidation latency
@@ -875,6 +898,7 @@ static void mmio_invalidate(struct npu_context *npu_context,
 	 * Loop over all the NPUs this process is active on and launch
 	 * an invalidate.
 	 */
+	pr_err("___K___ (%u) %s %u\n", smp_processor_id(), __func__, __LINE__);
 	acquire_atsd_reg(npu_context, mmio_atsd_reg);
 
 	if (atsd_psize == MMU_PAGE_COUNT)
@@ -894,8 +918,10 @@ static void mmio_invalidate(struct npu_context *npu_context,
 	mmio_invalidate_wait(mmio_atsd_reg);
 	mmio_invalidate_pid(mmio_atsd_reg, 0);
 	mmio_invalidate_wait(mmio_atsd_reg);
+	pr_err("___K___ (%u) %s %u\n", smp_processor_id(), __func__, __LINE__);
 
 	release_atsd_reg(mmio_atsd_reg);
+	pr_err("___K___ (%u) %s %u\n", smp_processor_id(), __func__, __LINE__);
 }
 
 static void pnv_npu2_mn_release(struct mmu_notifier *mn,
@@ -1057,6 +1083,8 @@ struct npu_context *pnv_npu2_init_context(struct pci_dev *gpdev,
 	} else
 		npu_context->nmmu_flush = true;
 
+	pr_err("___K___ (%u) %s %u: context id = %ld (%ld)\n", smp_processor_id(), __func__, __LINE__,
+			mm->context.id, npu_context->mm->context.id);
 	return npu_context;
 }
 EXPORT_SYMBOL(pnv_npu2_init_context);
@@ -1221,6 +1249,7 @@ int pnv_npu2_map_lpar_dev(struct pci_dev *gpdev, unsigned int lparid,
 	ret = opal_npu_map_lpar(nphb->opal_id,
 			PCI_DEVID(gpdev->bus->number, gpdev->devfn), lparid,
 			0 /* LPCR bits */);
+	pr_err("___K___ (%u) %s %u: ret=%x\n", smp_processor_id(), __func__, __LINE__, ret);
 	if (ret) {
 		dev_err(&gpdev->dev, "Error %d mapping device to LPAR\n", ret);
 		return ret;
@@ -1230,6 +1259,7 @@ int pnv_npu2_map_lpar_dev(struct pci_dev *gpdev, unsigned int lparid,
 			nphb->opal_id, msr);
 	ret = opal_npu_init_context(nphb->opal_id, 0/*__unused*/, msr,
 			PCI_DEVID(gpdev->bus->number, gpdev->devfn));
+	pr_err("___K___ (%u) %s %u: ret=%x\n", smp_processor_id(), __func__, __LINE__, ret);
 	if (ret < 0)
 		dev_err(&gpdev->dev, "Failed to init context: %d\n", ret);
 	else
@@ -1264,6 +1294,8 @@ int pnv_npu2_unmap_lpar_dev(struct pci_dev *gpdev)
 			nphb->opal_id);
 	ret = opal_npu_destroy_context(nphb->opal_id, 0/*__unused*/,
 			PCI_DEVID(gpdev->bus->number, gpdev->devfn));
+
+	pr_err("___K___ (%u) %s %u: ret=%x\n", smp_processor_id(), __func__, __LINE__, ret);
 	if (ret < 0) {
 		dev_err(&gpdev->dev, "Failed to destroy context: %d\n", ret);
 		return ret;
@@ -1274,6 +1306,7 @@ int pnv_npu2_unmap_lpar_dev(struct pci_dev *gpdev)
 	ret = opal_npu_map_lpar(nphb->opal_id,
 			PCI_DEVID(gpdev->bus->number, gpdev->devfn), 0 /*LPID*/,
 			0 /* LPCR bits */);
+	pr_err("___K___ (%u) %s %u: ret=%x\n", smp_processor_id(), __func__, __LINE__, ret);
 	if (ret)
 		dev_err(&gpdev->dev, "Error %d mapping device to LPAR\n", ret);
 
