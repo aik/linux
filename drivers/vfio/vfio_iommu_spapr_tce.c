@@ -464,7 +464,7 @@ static void tce_iommu_unuse_page_v2(struct tce_container *container,
 		return;
 
 	ret = tce_iommu_prereg_ua_to_hpa(container, be64_to_cpu(*pua),
-			IOMMU_PAGE_SIZE(tbl), &hpa, &mem);
+			tbl->it_page_shift, &hpa, &mem);
 	if (ret)
 		pr_debug("%s: tce %llx at #%lx was not cached, ret=%d\n",
 				__func__, be64_to_cpu(*pua), entry, ret);
