@@ -37,7 +37,6 @@ struct vfio_pci_nvgpu_data {
 	unsigned long gpu_tgt; /* TGT address of corresponding GPU RAM */
 	unsigned long useraddr; /* GPU RAM userspace address */
 	unsigned long size; /* Size of the GPU RAM window (usually 128GB) */
-	void *base; /* GPU RAM virtual address, for emulated access */
 	struct mm_struct *mm;
 	struct mm_iommu_table_group_mem_t *mem; /* Pre-registered RAM descr. */
 	struct pci_dev *gpdev;
@@ -50,20 +49,33 @@ static size_t vfio_pci_nvgpu_rw(struct vfio_pci_device *vdev,
 	unsigned int i = VFIO_PCI_OFFSET_TO_INDEX(*ppos) - VFIO_PCI_NUM_REGIONS;
 	struct vfio_pci_nvgpu_data *data = vdev->region[i].data;
 	loff_t pos = *ppos & VFIO_PCI_OFFSET_MASK;
+	loff_t posaligned = pos & PAGE_MASK, posoff = pos & ~PAGE_MASK;
+	size_t sizealigned;
+	void __iomem *ptr;
 
 	if (pos >= vdev->region[i].size)
 		return -EINVAL;
 
 	count = min(count, (size_t)(vdev->region[i].size - pos));
 
+	sizealigned = _ALIGN_UP(posoff + count, PAGE_SIZE);
+	ptr = ioremap_cache(data->gpu_hpa + posaligned, sizealigned);
+	if (!ptr)
+		return -EFAULT;
+
 	if (iswrite) {
-		if (copy_from_user(data->base + pos, buf, count))
-			return -EFAULT;
+		if (copy_from_user(ptr + posoff, buf, count))
+			count = -EFAULT;
+		else
+			*ppos += count;
 	} else {
-		if (copy_to_user(buf, data->base + pos, count))
-			return -EFAULT;
+		if (copy_to_user(buf, ptr + posoff, count))
+			count = -EFAULT;
+		else
+			*ppos += count;
 	}
-	*ppos += count;
+
+	iounmap(ptr);
 
 	return count;
 }
@@ -87,7 +99,6 @@ static void vfio_pci_nvgpu_release(struct vfio_pci_device *vdev,
 
 	pnv_npu2_unmap_lpar_dev(data->gpdev);
 
-	memunmap(data->base);
 	kfree(data);
 }
 
@@ -233,11 +244,6 @@ int vfio_pci_nvdia_v100_nvlink2_init(struct vfio_pci_device *vdev)
 	data->gpu_hpa = reg[0];
 	data->gpu_tgt = tgt;
 	data->size = reg[1];
-	data->base = memremap(data->gpu_hpa, data->size, MEMREMAP_WB);
-	if (!data->base) {
-		ret = -ENOMEM;
-		goto free_exit;
-	}
 
 	dev_dbg(&vdev->pdev->dev, "%lx..%lx\n", data->gpu_hpa,
 			data->gpu_hpa + data->size - 1);
