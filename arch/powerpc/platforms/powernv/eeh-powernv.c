@@ -948,6 +948,7 @@ void pnv_pci_reset_secondary_bus(struct pci_dev *dev)
 		pnv_eeh_bridge_reset(dev, EEH_RESET_HOT);
 		pnv_eeh_bridge_reset(dev, EEH_RESET_DEACTIVATE);
 	}
+	pnv_try_isolate_nvidia_v100(dev);
 }
 
 static void pnv_eeh_wait_for_pending(struct pci_dn *pdn, const char *type,

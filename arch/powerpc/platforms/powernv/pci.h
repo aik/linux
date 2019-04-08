@@ -243,5 +243,6 @@ extern void pnv_pci_unlink_table_and_group(struct iommu_table *tbl,
 extern void pnv_pci_setup_iommu_table(struct iommu_table *tbl,
 		void *tce_mem, u64 tce_size,
 		u64 dma_offset, unsigned int page_shift);
+extern void pnv_try_isolate_nvidia_v100(struct pci_dev *gpdev);
 
 #endif /* __POWERNV_PCI_H */

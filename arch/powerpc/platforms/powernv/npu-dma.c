@@ -425,6 +425,23 @@ static void pnv_comp_attach_table_group(struct npu_comp *npucomp,
 	++npucomp->pe_num;
 }
 
+static bool isolate_nvlink;
+
+static int __init parse_isolate_nvlink(char *p)
+{
+	bool val;
+
+	if (!p)
+		val = true;
+	else if (kstrtobool(p, &val))
+		return -EINVAL;
+
+	isolate_nvlink = val;
+
+	return 0;
+}
+early_param("isolate_nvlink", parse_isolate_nvlink);
+
 struct iommu_table_group *pnv_try_setup_npu_table_group(struct pnv_ioda_pe *pe)
 {
 	struct iommu_table_group *table_group;
@@ -445,7 +462,7 @@ struct iommu_table_group *pnv_try_setup_npu_table_group(struct pnv_ioda_pe *pe)
 
 	hose = pci_bus_to_host(npdev->bus);
 
-	if (hose->npu) {
+	if (hose->npu && !isolate_nvlink) {
 		table_group = &hose->npu->npucomp.table_group;
 
 		if (!table_group->group) {
@@ -455,7 +472,10 @@ struct iommu_table_group *pnv_try_setup_npu_table_group(struct pnv_ioda_pe *pe)
 					pe->pe_number);
 		}
 	} else {
-		/* Create a group for 1 GPU and attached NPUs for POWER8 */
+		/*
+		 * Create a group for 1 GPU and attached NPUs for
+		 * POWER8 (always) or POWER9 (when isolate_nvlink).
+		 */
 		pe->npucomp = kzalloc(sizeof(*pe->npucomp), GFP_KERNEL);
 		table_group = &pe->npucomp->table_group;
 		table_group->ops = &pnv_npu_peers_ops;
