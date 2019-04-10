@@ -633,11 +633,43 @@ static void iommu_table_clear(struct iommu_table *tbl)
 #endif
 }
 
+static void iommu_table_reserve_pages(struct iommu_table *tbl)
+{
+	int i;
+
+	/*
+	 * Reserve page 0 so it will not be used for any mappings.
+	 * This avoids buggy drivers that consider page 0 to be invalid
+	 * to crash the machine or even lose data.
+	 */
+	if (tbl->it_offset == 0)
+		set_bit(0, tbl->it_map);
+
+	for (i = tbl->it_reserved_start; i < tbl->it_reserved_end; ++i)
+		set_bit(i, tbl->it_map);
+}
+
+static void iommu_table_release_pages(struct iommu_table *tbl)
+{
+	int i;
+
+	/*
+	 * In case we have reserved the first bit, we should not emit
+	 * the warning below.
+	 */
+	if (tbl->it_offset == 0)
+		clear_bit(0, tbl->it_map);
+
+	for (i = tbl->it_reserved_start; i < tbl->it_reserved_end; ++i)
+		clear_bit(i, tbl->it_map);
+}
+
 /*
  * Build a iommu_table structure.  This contains a bit map which
  * is used to manage allocation of the tce space.
  */
-struct iommu_table *iommu_init_table(struct iommu_table *tbl, int nid)
+struct iommu_table *iommu_init_table_res(struct iommu_table *tbl, int nid,
+		unsigned long res_start, unsigned long res_end)
 {
 	unsigned long sz;
 	static int welcomed = 0;
@@ -656,13 +688,9 @@ struct iommu_table *iommu_init_table(struct iommu_table *tbl, int nid)
 	tbl->it_map = page_address(page);
 	memset(tbl->it_map, 0, sz);
 
-	/*
-	 * Reserve page 0 so it will not be used for any mappings.
-	 * This avoids buggy drivers that consider page 0 to be invalid
-	 * to crash the machine or even lose data.
-	 */
-	if (tbl->it_offset == 0)
-		set_bit(0, tbl->it_map);
+	tbl->it_reserved_start = res_start;
+	tbl->it_reserved_end = res_end;
+	iommu_table_reserve_pages(tbl);
 
 	/* We only split the IOMMU table if we have 1GB or more of space */
 	if ((tbl->it_size << tbl->it_page_shift) >= (1UL * 1024 * 1024 * 1024))
@@ -714,12 +742,7 @@ static void iommu_table_free(struct kref *kref)
 		return;
 	}
 
-	/*
-	 * In case we have reserved the first bit, we should not emit
-	 * the warning below.
-	 */
-	if (tbl->it_offset == 0)
-		clear_bit(0, tbl->it_map);
+	iommu_table_release_pages(tbl);
 
 	/* verify that table contains no entries */
 	if (!bitmap_empty(tbl->it_map, tbl->it_size))
@@ -1024,8 +1047,7 @@ int iommu_take_ownership(struct iommu_table *tbl)
 	for (i = 0; i < tbl->nr_pools; i++)
 		spin_lock(&tbl->pools[i].lock);
 
-	if (tbl->it_offset == 0)
-		clear_bit(0, tbl->it_map);
+	iommu_table_reserve_pages(tbl);
 
 	if (!bitmap_empty(tbl->it_map, tbl->it_size)) {
 		pr_err("iommu_tce: it_map is not empty");
@@ -1055,9 +1077,7 @@ void iommu_release_ownership(struct iommu_table *tbl)
 
 	memset(tbl->it_map, 0, sz);
 
-	/* Restore bit#0 set by iommu_init_table() */
-	if (tbl->it_offset == 0)
-		set_bit(0, tbl->it_map);
+	iommu_table_release_pages(tbl);
 
 	for (i = 0; i < tbl->nr_pools; i++)
 		spin_unlock(&tbl->pools[i].lock);

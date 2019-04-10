@@ -2559,6 +2559,7 @@ static long pnv_pci_ioda2_setup_default_config(struct pnv_ioda_pe *pe)
 {
 	struct iommu_table *tbl = NULL;
 	long rc;
+	unsigned long res_start, res_end;
 
 	/*
 	 * crashkernel= specifies the kdump kernel's maximum memory at
@@ -2572,19 +2573,46 @@ static long pnv_pci_ioda2_setup_default_config(struct pnv_ioda_pe *pe)
 	 * DMA window can be larger than available memory, which will
 	 * cause errors later.
 	 */
-	const u64 window_size = min((u64)pe->table_group.tce32_size, max_memory);
+	const u64 maxblock = 1UL << (PAGE_SHIFT + MAX_ORDER - 1);
 
-	rc = pnv_pci_ioda2_create_table(&pe->table_group, 0,
-			IOMMU_PAGE_SHIFT_4K,
-			window_size,
-			POWERNV_IOMMU_DEFAULT_LEVELS, false, &tbl);
+	/*
+	 * We create the default window as big as we can. The constraint is
+	 * the max order of allocation possible. The TCE tableis likely to
+	 * end up being multilevel and with on-demand allocation in place,
+	 * the initial use is not going to be huge as the default window aims
+	 * to support cripplied devices (i.e. not fully 64bit DMAble) only.
+	 */
+	/* iommu_table::it_map uses 1 bit per IOMMU page, hence 8 */
+	const u64 window_size = min((maxblock * 8) << PAGE_SHIFT, max_memory);
+	/* Each TCE level cannot exceed maxblock so go multilevel if needed */
+	unsigned long tces_order = ilog2(window_size >> PAGE_SHIFT);
+	unsigned long tcelevel_order = ilog2(maxblock >> 3);
+	unsigned int levels = tces_order / tcelevel_order;
+
+	if (tces_order % tcelevel_order)
+		levels += 1;
+	/*
+	 * We try to stick to default levels (which is >1 at the moment) in
+	 * order to save memory by relying on on-demain TCE level allocation.
+	 */
+	levels = max_t(unsigned int, levels, POWERNV_IOMMU_DEFAULT_LEVELS);
+
+	rc = pnv_pci_ioda2_create_table(&pe->table_group, 0, PAGE_SHIFT,
+			window_size, levels, false, &tbl);
 	if (rc) {
 		pe_err(pe, "Failed to create 32-bit TCE table, err %ld",
 				rc);
 		return rc;
 	}
 
-	iommu_init_table(tbl, pe->phb->hose->node);
+	/* We use top part of 32bit space for MMIO so exclude it from DMA */
+	res_start = 0;
+	res_end = 0;
+	if (window_size > pe->phb->ioda.m32_pci_base) {
+		res_start = pe->phb->ioda.m32_pci_base >> tbl->it_page_shift;
+		res_end = min(window_size, SZ_4G) >> tbl->it_page_shift;
+	}
+	iommu_init_table_res(tbl, pe->phb->hose->node, res_start, res_end);
 
 	rc = pnv_pci_ioda2_set_window(&pe->table_group, 0, tbl);
 	if (rc) {
