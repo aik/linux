@@ -50,6 +50,7 @@
 #include <asm/udbg.h>
 #include <asm/mmzone.h>
 #include <asm/plpar_wrappers.h>
+#include <asm/swiotlb.h>
 
 #include "pseries.h"
 
@@ -1198,13 +1199,13 @@ static void pci_dma_dev_setup_pSeriesLP(struct pci_dev *dev)
 	iommu_add_device(pci->table_group, &dev->dev);
 }
 
-static bool iommu_bypass_supported_pSeriesLP(struct pci_dev *pdev, u64 dma_mask)
+bool iommu_bypass_supported_pSeriesLP(struct pci_dev *pdev, u64 dma_mask)
 {
 	struct device_node *dn = pci_device_to_OF_node(pdev), *pdn;
 	const __be32 *dma_window = NULL;
 
 	/* only attempt to use a new window if 64-bit DMA is requested */
-	if (dma_mask < DMA_BIT_MASK(64))
+	if (dma_mask < DMA_BIT_MASK(64) && !ppc_swiotlb_enable)
 		return false;
 
 	dev_dbg(&pdev->dev, "node is %pOF\n", dn);
