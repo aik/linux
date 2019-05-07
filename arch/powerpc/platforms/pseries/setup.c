@@ -801,7 +801,10 @@ static void __init pSeries_setup_arch(void)
 	ppc_md.pcibios_root_bridge_prepare = pseries_root_bridge_prepare;
 
 	if (swiotlb_force == SWIOTLB_FORCE)
+	{
+		pr_err("___K___ (%u) %s %u\n", smp_processor_id(), __func__, __LINE__);
 		ppc_swiotlb_enable = 1;
+	}
 }
 
 static void pseries_panic(char *str)

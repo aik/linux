@@ -1208,7 +1208,7 @@ bool iommu_bypass_supported_pSeriesLP(struct pci_dev *pdev, u64 dma_mask)
 	if (dma_mask < DMA_BIT_MASK(64) && !ppc_swiotlb_enable)
 		return false;
 
-	dev_dbg(&pdev->dev, "node is %pOF\n", dn);
+	dev_err(&pdev->dev, "node is %pOF\n", dn);
 
 	/*
 	 * the device tree might contain the dma-window properties

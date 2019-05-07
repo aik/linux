@@ -276,7 +276,7 @@ void __init mem_init(void)
 	BUILD_BUG_ON(MMU_PAGE_COUNT > 16);
 
 #ifdef CONFIG_SWIOTLB
-	swiotlb_init(0);
+	swiotlb_init(1);
 #endif
 
 	high_memory = (void *) __va(max_low_pfn * PAGE_SIZE);

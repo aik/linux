@@ -141,7 +141,7 @@ int dma_iommu_dma_supported(struct device *dev, u64 mask)
 		return 0;
 	}
 
-	dev_dbg(dev, "iommu: not 64-bit, using default ops\n");
+	dev_err(dev, "iommu: not 64-bit, using default ops\n");
 	dev->archdata.iommu_bypass = false;
 	return 1;
 }
