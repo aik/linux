@@ -557,6 +557,10 @@ found:
 	    (dir == DMA_TO_DEVICE || dir == DMA_BIDIRECTIONAL))
 		swiotlb_bounce(orig_addr, tlb_addr, size, DMA_TO_DEVICE);
 
+	pr_err("___K___ (%u) %s %u: nr=%d %ld/%ld offfsl=%ld max=%ld\n", smp_processor_id(),
+			__func__, __LINE__,
+			nslots, io_tlb_used, io_tlb_nslabs, offset_slots, max_slots);
+
 	return tlb_addr;
 }
 
@@ -608,6 +612,8 @@ void swiotlb_tbl_unmap_single(struct device *hwdev, phys_addr_t tlb_addr,
 		io_tlb_used -= nslots;
 	}
 	spin_unlock_irqrestore(&io_tlb_lock, flags);
+	pr_err("___K___ (%u) %s %u: %ld/%ld\n", smp_processor_id(),
+			__func__, __LINE__, io_tlb_used, io_tlb_nslabs);
 }
 
 void swiotlb_tbl_sync_single(struct device *hwdev, phys_addr_t tlb_addr,
