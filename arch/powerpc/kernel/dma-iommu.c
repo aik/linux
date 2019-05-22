@@ -39,6 +39,17 @@ static void *dma_iommu_alloc_coherent(struct device *dev, size_t size,
 				      dma_addr_t *dma_handle, gfp_t flag,
 				      unsigned long attrs)
 {
+	struct iommu_table *tbl = get_iommu_table_base(dev);
+
+	if (dev_is_pci(dev)) {
+		struct pci_dev *pdev = to_pci_dev(dev);
+
+		if (pnv_pci_get_gpu_dev(pdev) || pnv_pci_get_npu_dev(pdev, 0)) {
+			dev_err(dev, "Enforce no coherent DMA for %lx\n",
+					tbl->it_index);
+			return NULL;
+		}
+	}
 	if (dma_iommu_alloc_bypass(dev))
 		return dma_direct_alloc(dev, size, dma_handle, flag, attrs);
 	return iommu_alloc_coherent(dev, get_iommu_table_base(dev), size,
