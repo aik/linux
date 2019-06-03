@@ -63,6 +63,7 @@ struct rtas_t {
 	arch_spinlock_t lock;
 	struct rtas_args args;
 	struct device_node *dev;	/* virtual address pointer */
+	bool hcall;
 };
 
 struct rtas_suspend_me_data {

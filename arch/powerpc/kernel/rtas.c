@@ -53,6 +53,14 @@ struct rtas_t rtas = {
 };
 EXPORT_SYMBOL(rtas);
 
+static void __enter_rtas(unsigned long pa)
+{
+	if (rtas.hcall)
+		plpar_hcall_norets(H_RTAS, pa);
+	else
+		enter_rtas(pa);
+}
+
 DEFINE_SPINLOCK(rtas_data_buf_lock);
 EXPORT_SYMBOL(rtas_data_buf_lock);
 
@@ -98,9 +106,6 @@ static void unlock_rtas(unsigned long flags)
 static void call_rtas_display_status(unsigned char c)
 {
 	unsigned long s;
-
-	if (!rtas.base)
-		return;
 
 	s = lock_rtas();
 	rtas_call_unlocked(&rtas.args, 10, 1, 1, NULL, c);
@@ -149,9 +154,6 @@ static void udbg_rtascon_putc(char c)
 {
 	int tries;
 
-	if (!rtas.base)
-		return;
-
 	/* Add CRs before LFs */
 	if (c == '\n')
 		udbg_rtascon_putc('\r');
@@ -167,9 +169,6 @@ static void udbg_rtascon_putc(char c)
 static int udbg_rtascon_getc_poll(void)
 {
 	int c;
-
-	if (!rtas.base)
-		return -1;
 
 	if (rtas_call(rtas_getchar_token, 0, 2, &c))
 		return -1;
@@ -208,9 +207,6 @@ void rtas_progress(char *s, unsigned short hex)
 	static DEFINE_SPINLOCK(progress_lock);
 	static int current_line;
 	static int pending_newline = 0;  /* did last write end with unprinted newline? */
-
-	if (!rtas.base)
-		return;
 
 	if (display_width == 0) {
 		display_width = 0x10;
@@ -386,7 +382,7 @@ static char *__fetch_rtas_last_error(char *altbuf)
 	save_args = rtas.args;
 	rtas.args = err_args;
 
-	enter_rtas(__pa(&rtas.args));
+	__enter_rtas(__pa(&rtas.args));
 
 	err_args = rtas.args;
 	rtas.args = save_args;
@@ -432,7 +428,7 @@ va_rtas_call_unlocked(struct rtas_args *args, int token, int nargs, int nret,
 	for (i = 0; i < nret; ++i)
 		args->rets[i] = 0;
 
-	enter_rtas(__pa(args));
+	__enter_rtas(__pa(args));
 }
 
 void rtas_call_unlocked(struct rtas_args *args, int token, int nargs, int nret, ...)
@@ -453,7 +449,7 @@ int rtas_call(int token, int nargs, int nret, int *outputs, ...)
 	char *buff_copy = NULL;
 	int ret;
 
-	if (!rtas.entry || token == RTAS_UNKNOWN_SERVICE)
+	if (token == RTAS_UNKNOWN_SERVICE)
 		return -1;
 
 	s = lock_rtas();
@@ -1070,9 +1066,6 @@ SYSCALL_DEFINE1(rtas, struct rtas_args __user *, uargs)
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
-	if (!rtas.entry)
-		return -EINVAL;
-
 	if (copy_from_user(&args, uargs, 3 * sizeof(u32)) != 0)
 		return -EFAULT;
 
@@ -1121,7 +1114,7 @@ SYSCALL_DEFINE1(rtas, struct rtas_args __user *, uargs)
 	flags = lock_rtas();
 
 	rtas.args = args;
-	enter_rtas(__pa(&rtas.args));
+	__enter_rtas(__pa(&rtas.args));
 	args = rtas.args;
 
 	/* A -1 return code indicates that the last command couldn't
@@ -1155,8 +1148,8 @@ SYSCALL_DEFINE1(rtas, struct rtas_args __user *, uargs)
 void __init rtas_initialize(void)
 {
 	unsigned long rtas_region = RTAS_INSTANTIATE_MAX;
-	u32 base, size, entry;
-	int no_base, no_size, no_entry;
+	u32 base = 0, size = 0, entry = 0, do_h_rtas = 0;
+	int no_base, no_size, no_entry, ret;
 
 	/* Get RTAS dev node and fill up our "rtas" structure with infos
 	 * about it.
@@ -1167,16 +1160,14 @@ void __init rtas_initialize(void)
 
 	no_base = of_property_read_u32(rtas.dev, "linux,rtas-base", &base);
 	no_size = of_property_read_u32(rtas.dev, "rtas-size", &size);
-	if (no_base || no_size) {
-		of_node_put(rtas.dev);
-		rtas.dev = NULL;
-		return;
-	}
 
 	rtas.base = base;
 	rtas.size = size;
 	no_entry = of_property_read_u32(rtas.dev, "linux,rtas-entry", &entry);
 	rtas.entry = no_entry ? rtas.base : entry;
+
+	ret = of_property_read_u32(of_chosen, "qemu,h_rtas", &do_h_rtas);
+	rtas.hcall = !ret && do_h_rtas;
 
 	/* If RTAS was found, allocate the RMO buffer for it and look for
 	 * the stop-self token if any
@@ -1214,6 +1205,10 @@ int __init early_init_dt_scan_rtas(unsigned long node,
 		rtas.base = *basep;
 		rtas.entry = *entryp;
 		rtas.size = *sizep;
+	} else {
+		rtas.base = 0;
+		rtas.entry = 0;
+		rtas.size = 0;
 	}
 
 #ifdef CONFIG_UDBG_RTAS_CONSOLE
