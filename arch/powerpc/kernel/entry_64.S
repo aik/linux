@@ -1337,3 +1337,13 @@ _GLOBAL(enter_prom)
 	ld	r0,16(r1)
 	mtlr    r0
         blr
+
+_GLOBAL(prom_init_hcall_norets)
+	mfcr	r0
+	stw	r0,8(r1)
+	.long 0x44000022
+/*	HVSC				 invoke the hypervisor */
+
+	lwz	r0,8(r1)
+	mtcrf	0xff,r0
+	blr				/* return r3 = status */

@@ -138,9 +138,16 @@ extern void __start(unsigned long r3, unsigned long r4, unsigned long r5,
 		    unsigned long r9);
 
 #ifdef CONFIG_PPC64
+extern long prom_init_hcall_norets(unsigned long opcode, ...);
 extern int enter_prom(struct prom_args *args, unsigned long entry);
+
+static int __enter_prom(struct prom_args *args, unsigned long entry)
+{
+#define H_CLIENT	0xf005
+	return prom_init_hcall_norets(H_CLIENT, args);
+}
 #else
-static inline int enter_prom(struct prom_args *args, unsigned long entry)
+static inline int __enter_prom(struct prom_args *args, unsigned long entry)
 {
 	return ((int (*)(struct prom_args *))entry)(args);
 }
@@ -247,7 +254,7 @@ static int __init call_prom(const char *service, int nargs, int nret, ...)
 	for (i = 0; i < nret; i++)
 		args.args[nargs+i] = 0;
 
-	if (enter_prom(&args, prom_entry) < 0)
+	if (__enter_prom(&args, prom_entry) < 0)
 		return PROM_ERROR;
 
 	return (nret > 0) ? be32_to_cpu(args.args[nargs]) : 0;
@@ -272,7 +279,7 @@ static int __init call_prom_ret(const char *service, int nargs, int nret,
 	for (i = 0; i < nret; i++)
 		args.args[nargs+i] = 0;
 
-	if (enter_prom(&args, prom_entry) < 0)
+	if (__enter_prom(&args, prom_entry) < 0)
 		return PROM_ERROR;
 
 	if (rets != NULL)
@@ -3050,7 +3057,6 @@ unsigned long __init prom_init(unsigned long r3, unsigned long r4,
 #else
 	reloc_toc();
 #endif
-
 	/*
 	 * First zero the BSS
 	 */
