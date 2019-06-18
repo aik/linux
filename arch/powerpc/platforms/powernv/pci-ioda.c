@@ -2038,9 +2038,146 @@ static inline void pnv_pci_ioda2_tce_invalidate_pe(struct pnv_ioda_pe *pe)
 
 	if (phb->model == PNV_PHB_MODEL_PHB3 && phb->regs)
 		pnv_pci_phb3_tce_invalidate_pe(pe);
+	else if (pe->phb->tce_invalidate)
+		pe->phb->tce_invalidate(pe->phb, pe, NULL, 0, 0, false);
 	else
 		opal_pci_tce_kill(phb->opal_id, OPAL_PCI_TCE_KILL_PE,
 				  pe->pe_number, 0, 0, 0);
+}
+
+#define PHB4_DMARD_SYNC                  0x200
+#define   PHB4_DMARD_SYNC_START          PPC_BIT(0)
+#define   PHB4_DMARD_SYNC_COMPLETE       PPC_BIT(1)
+#define PHB4_TCE_KILL                    0x210
+#define   PHB4_TCE_KILL_ALL              PPC_BIT(0)
+#define   PHB4_TCE_KILL_PE               PPC_BIT(1)
+#define   PHB4_TCE_KILL_ONE              PPC_BIT(2)
+#define   PHB4_TCE_KILL_PSEL             PPC_BIT(3)
+#define   PHB4_TCE_KILL_64K              0x1000 /* Address override */
+#define   PHB4_TCE_KILL_2M               0x2000 /* Address override */
+#define   PHB4_TCE_KILL_1G               0x3000 /* Address override */
+#define   PHB4_TCE_KILL_PENUM            PPC_BITMASK(55,63)
+#define PHB4_Q_DMA_R                     0x888
+#define   PHB4_Q_DMA_R_QUIESCE_DMA       PPC_BIT(0)
+#define   PHB4_Q_DMA_R_AUTORESET         PPC_BIT(1)
+#define   PHB4_Q_DMA_R_DMA_RESP_STATUS   PPC_BIT(4)
+#define   PHB4_Q_DMA_R_MMIO_RESP_STATUS  PPC_BIT(5)
+#define   PHB4_Q_DMA_R_TCE_RESP_STATUS   PPC_BIT(6)
+#define   PHB4_Q_DMA_R_TCE_KILL_STATUS   PPC_BIT(7)
+/* If there are more TCEs than this - flush the entire cache for PE */
+#define PHB4_ONE_TCE_LIMIT		 (1024*1024)
+
+static inline __be64 __iomem *phb4_get_reg(struct pnv_phb *phb,
+			unsigned long reg, bool real_mode)
+{
+	return real_mode ? (__be64 __iomem *)(phb->regs_phys + reg) :
+		(phb->regs + reg);
+}
+
+static inline void phb_writeq_be(u64 val, volatile void __iomem *paddr, bool rm)
+{
+	if (rm)
+		__raw_rm_writeq_be(val, paddr);
+	else
+		__raw_writeq_be(val, paddr);
+}
+
+static int64_t phb4_wait_bit(struct pnv_phb *phb, uint32_t reg,
+                             uint64_t mask, uint64_t want_val, bool rm)
+{
+        uint64_t val;
+	__be64 __iomem *_reg = phb4_get_reg(phb, reg, rm);
+
+	/* Wait for all pending TCE kills to complete */
+	for (;;) {
+		if (rm)
+			val = be64_to_cpu(__raw_rm_readq(_reg));
+		else
+			val = be64_to_cpu(__raw_readq(_reg));
+		if (val == 0xffffffffffffffffull) {
+			/* XXX Fenced ? */
+			return OPAL_HARDWARE;
+		}
+		if ((val & mask) == want_val)
+			break;
+
+	}
+	return OPAL_SUCCESS;
+}
+
+static int phb4_wait_tce_kill_slot(struct pnv_phb *phb, bool rm)
+{
+	/* Wait for a slot in the HW kill queue */
+	return phb4_wait_bit(phb, PHB4_TCE_KILL,
+			PHB4_TCE_KILL_ALL | PHB4_TCE_KILL_PE |
+			PHB4_TCE_KILL_ONE, 0, rm);
+}
+
+static void pnv_pci_phb4_tce_invalidate(struct pnv_phb *phb,
+		struct pnv_ioda_pe *pe,
+		struct iommu_table *tbl, unsigned long index,
+		unsigned long npages, bool rm)
+{
+	unsigned long irqflags;
+	__be64 __iomem *invalidate = phb4_get_reg(phb, PHB4_TCE_KILL, rm);
+
+	spin_lock_irqsave(&phb->lock, irqflags);
+	mb(); /* Sync TCEs in the table */
+	if (pe && tbl && (npages < PHB4_ONE_TCE_LIMIT)) {
+		unsigned shift = tbl->it_page_shift;
+		unsigned long i, val, inc = 1UL << shift, flags;
+
+		flags = PHB4_TCE_KILL_ONE;
+		flags |= (pe->pe_number & PHB4_TCE_KILL_PENUM);
+		switch (shift) {
+		case 12:
+			break;
+		case 16:
+			flags |= PHB4_TCE_KILL_PSEL | PHB4_TCE_KILL_64K;
+			break;
+		case 21:
+			flags |= PHB4_TCE_KILL_PSEL | PHB4_TCE_KILL_2M;
+			break;
+		case 30:
+			flags |= PHB4_TCE_KILL_PSEL | PHB4_TCE_KILL_1G;
+			break;
+		default:
+			pr_err("Unexpected TCE shift = %d\n", shift);
+			goto unlock_exit;
+		}
+
+		for (i = 0, val = (index << shift) | flags; i < npages; ++i) {
+			if (OPAL_SUCCESS != phb4_wait_tce_kill_slot(phb, rm))
+				goto unlock_exit;
+
+			phb_writeq_be(val, invalidate, rm);
+			val += inc;
+		}
+	} else {
+		if (OPAL_SUCCESS != phb4_wait_tce_kill_slot(phb, rm))
+			goto unlock_exit;
+		if (pe)
+			phb_writeq_be(PHB4_TCE_KILL_PE |
+					(pe->pe_number & PHB4_TCE_KILL_PENUM),
+					invalidate, rm);
+		else
+			phb_writeq_be(PHB4_TCE_KILL_ALL, invalidate, rm);
+	}
+
+	/* Start DMA sync process */
+	phb_writeq_be(PHB4_DMARD_SYNC_START,
+			phb4_get_reg(phb, PHB4_DMARD_SYNC, rm), rm);
+
+	/* Wait for kill to complete */
+	if (phb4_wait_bit(phb, PHB4_Q_DMA_R, PHB4_Q_DMA_R_TCE_KILL_STATUS, 0,
+			rm) != OPAL_SUCCESS)
+		goto unlock_exit;
+
+	/* Wait for DMA sync to complete */
+	phb4_wait_bit(phb, PHB4_DMARD_SYNC, PHB4_DMARD_SYNC_COMPLETE,
+			PHB4_DMARD_SYNC_COMPLETE, rm);
+unlock_exit:
+	spin_unlock_irqrestore(&phb->lock, irqflags);
 }
 
 static void pnv_pci_ioda2_tce_invalidate(struct iommu_table *tbl,
@@ -2071,6 +2208,8 @@ static void pnv_pci_ioda2_tce_invalidate(struct iommu_table *tbl,
 		if (phb->model == PNV_PHB_MODEL_PHB3 && phb->regs)
 			pnv_pci_phb3_tce_invalidate(pe, rm, shift,
 						    index, npages);
+		else if (phb->tce_invalidate)
+			phb->tce_invalidate(phb, pe, tbl, index, npages, rm);
 		else
 			opal_pci_tce_kill(phb->opal_id,
 					  OPAL_PCI_TCE_KILL_PAGES,
@@ -2083,6 +2222,8 @@ void pnv_pci_ioda2_tce_invalidate_entire(struct pnv_phb *phb, bool rm)
 {
 	if (phb->model == PNV_PHB_MODEL_NPU || phb->model == PNV_PHB_MODEL_PHB3)
 		pnv_pci_phb3_tce_invalidate_entire(phb, rm);
+	else if (phb->tce_invalidate)
+		phb->tce_invalidate(phb, NULL, NULL, 0, 0, false);
 	else
 		opal_pci_tce_kill(phb->opal_id, OPAL_PCI_TCE_KILL, 0, 0, 0, 0);
 }
@@ -3694,6 +3835,9 @@ static void __init pnv_pci_init_ioda_phb(struct device_node *np,
 		phb->model = PNV_PHB_MODEL_NPU2;
 	else
 		phb->model = PNV_PHB_MODEL_UNKNOWN;
+
+	if (of_device_is_compatible(np, "ibm,power9-pciex"))
+		phb->tce_invalidate = pnv_pci_phb4_tce_invalidate;
 
 	/* Initialize diagnostic data buffer */
 	prop32 = of_get_property(np, "ibm,phb-diag-data-size", NULL);

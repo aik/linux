@@ -116,6 +116,9 @@ struct pnv_phb {
 	int (*get_pe_state)(struct pnv_phb *phb, int pe_no);
 	void (*freeze_pe)(struct pnv_phb *phb, int pe_no);
 	int (*unfreeze_pe)(struct pnv_phb *phb, int pe_no, int opt);
+	void (*tce_invalidate)(struct pnv_phb *phb, struct pnv_ioda_pe *pe,
+			struct iommu_table *tbl,
+			unsigned long index, unsigned long npages, bool rm);
 
 	struct {
 		/* Global bridge info */
