@@ -1134,7 +1134,7 @@ static void __init prom_parse_platform_support(u8 index, u8 val,
 	}
 }
 
-static void __init prom_check_platform_support(void)
+struct ibm_arch_vec __init *prom_check_platform_support(int prop_len)
 {
 	struct platform_support supported = {
 		.hash_mmu = false,
@@ -1142,8 +1142,6 @@ static void __init prom_check_platform_support(void)
 		.radix_gtse = false,
 		.xive = false
 	};
-	int prop_len = prom_getproplen(prom.chosen,
-				       "ibm,arch-vec-5-platform-support");
 
 	/* First copy the architecture vec template */
 	ibm_architecture_vec = ibm_architecture_vec_template;
@@ -1186,7 +1184,12 @@ static void __init prom_check_platform_support(void)
 		prom_debug("Asking for XIVE\n");
 		ibm_architecture_vec.vec5.intarch = OV5_FEAT(OV5_XIVE_EXPLOIT);
 	}
+
+	ibm_architecture_vec.vec5.max_cpus = cpu_to_be32(NR_CPUS);
+
+	return &ibm_architecture_vec;
 }
+EXPORT_SYMBOL_GPL(prom_check_platform_support);
 
 static void __init prom_send_capabilities(void)
 {
@@ -1195,7 +1198,8 @@ static void __init prom_send_capabilities(void)
 	u32 cores;
 
 	/* Check ibm,arch-vec-5-platform-support and fixup vec5 if required */
-	prom_check_platform_support();
+	prom_check_platform_support(prom_getproplen(prom.chosen,
+				"ibm,arch-vec-5-platform-support"));
 
 	root = call_prom("open", 1, 1, ADDR("/"));
 	if (root != 0) {

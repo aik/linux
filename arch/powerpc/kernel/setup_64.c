@@ -287,11 +287,52 @@ void __init record_spr_defaults(void)
  * device-tree is not accessible via normal means at this point.
  */
 
+/*
+ * The architecture vector has an array of PVR mask/value pairs,
+ * followed by # option vectors - 1, followed by the option vectors.
+ *
+ * See prom.h for the definition of the bits specified in the
+ * architecture vector.
+ */
+
+extern struct ibm_arch_vec __init *prom_check_platform_support(
+		int vec5_prop_len);
+
+int __init early_init_dt_scan_chosen_h_cas(unsigned long node,
+		const char *uname, int depth, void *data)
+{
+	int l;
+	const char *p;
+
+	if (depth != 1 || !data ||
+	    (strcmp(uname, "chosen") != 0 && strcmp(uname, "chosen@0") != 0))
+		return 0;
+	p = of_get_flat_dt_prop(node, "qemu,h_cas", &l);
+	if (p != NULL && l > 0)
+		*(bool *) data = be32_to_cpu(*(uint32_t *) p) != 0;
+
+	return 1;
+}
+
 void __init early_setup(unsigned long dt_ptr)
 {
 	static __initdata struct paca_struct boot_paca;
+	struct ibm_arch_vec *vec = prom_check_platform_support(0);
 
 	/* -------- printk is _NOT_ safe to use here ! ------- */
+
+	/* ibm,client-architecture-support support */
+#define KVMPPC_HCALL_BASE       0xf000
+#define KVMPPC_H_CAS            (KVMPPC_HCALL_BASE + 0x2)
+#define FDT_MAX_SIZE 0x100000
+	bool do_h_cas = false;
+
+	if (early_init_dt_verify(__va(dt_ptr))) {
+		of_scan_flat_dt(early_init_dt_scan_chosen_h_cas, &do_h_cas);
+		if (do_h_cas)
+			plpar_hcall_norets(KVMPPC_H_CAS, vec, dt_ptr,
+					FDT_MAX_SIZE);
+	}
 
 	/* Try new device tree based feature discovery ... */
 	if (!dt_cpu_ftrs_init(__va(dt_ptr)))
