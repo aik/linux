@@ -211,7 +211,8 @@
 #define OPAL_MPIPL_UPDATE			173
 #define OPAL_MPIPL_REGISTER_TAG			174
 #define OPAL_MPIPL_QUERY_TAG			175
-#define OPAL_LAST				175
+#define OPAL_PCI_SET_PHB_FLAGS                  176
+#define OPAL_LAST				176
 
 #define QUIESCE_HOLD			1 /* Spin all calls at entry */
 #define QUIESCE_REJECT			2 /* Fail all calls with OPAL_BUSY */
@@ -432,6 +433,10 @@ enum OpalSlotLedType {
 enum OpalSlotLedState {
 	OPAL_SLOT_LED_STATE_OFF = 0,	/* LED is OFF */
 	OPAL_SLOT_LED_STATE_ON = 1	/* LED is ON */
+};
+
+enum OpalPCIPHBFlags {
+        OPAL_PCI_PHB_FLAG_TVE1_4GB = 0x1,
 };
 
 /*
