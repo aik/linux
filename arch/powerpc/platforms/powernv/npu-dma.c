@@ -469,6 +469,7 @@ struct iommu_table_group *pnv_try_setup_npu_table_group(struct pnv_ioda_pe *pe)
 	table_group->tce32_start = pe->table_group.tce32_start;
 	table_group->tce32_size = pe->table_group.tce32_size;
 	table_group->max_levels = pe->table_group.max_levels;
+	table_group->tce64_start = pe->table_group.tce64_start;
 	if (!table_group->pgsizes)
 		table_group->pgsizes = pe->table_group.pgsizes;
 

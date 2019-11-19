@@ -1777,7 +1777,7 @@ static void pnv_pci_ioda_dma_dev_setup(struct pci_dev *pdev)
 
 	pe = &phb->ioda.pe_array[pdn->pe_number];
 	WARN_ON(get_dma_ops(&pdev->dev) != &dma_iommu_ops);
-	pdev->dev.archdata.dma_offset = pe->tce_bypass_base;
+	pdev->dev.archdata.dma_offset = pe->table_group.tce64_start;
 	set_iommu_table_base(&pdev->dev, pe->table_group.tables[0]);
 	/*
 	 * Note: iommu_add_device() will fail here as
@@ -1869,7 +1869,8 @@ static bool pnv_pci_ioda_iommu_bypass_supported(struct pci_dev *pdev,
 
 	pe = &phb->ioda.pe_array[pdn->pe_number];
 	if (pe->tce_bypass_enabled) {
-		u64 top = pe->tce_bypass_base + memblock_end_of_DRAM() - 1;
+		u64 top = pe->table_group.tce64_start +
+			memblock_end_of_DRAM() - 1;
 		if (dma_mask >= top)
 			return true;
 	}
@@ -1903,7 +1904,7 @@ static void pnv_ioda_setup_bus_dma(struct pnv_ioda_pe *pe, struct pci_bus *bus)
 
 	list_for_each_entry(dev, &bus->devices, bus_list) {
 		set_iommu_table_base(&dev->dev, pe->table_group.tables[0]);
-		dev->dev.archdata.dma_offset = pe->tce_bypass_base;
+		dev->dev.archdata.dma_offset = pe->table_group.tce64_start;
 
 		if ((pe->flags & PNV_IODA_PE_BUS_ALL) && dev->subordinate)
 			pnv_ioda_setup_bus_dma(pe, dev->subordinate);
@@ -2361,16 +2362,12 @@ static void pnv_pci_ioda2_set_bypass(struct pnv_ioda_pe *pe, bool enable)
 
 		top = roundup_pow_of_two(top);
 		rc = opal_pci_map_pe_dma_window_real(pe->phb->opal_id,
-						     pe->pe_number,
-						     window_id,
-						     pe->tce_bypass_base,
-						     top);
+				pe->pe_number, window_id,
+				pe->table_group.tce64_start, top);
 	} else {
 		rc = opal_pci_map_pe_dma_window_real(pe->phb->opal_id,
-						     pe->pe_number,
-						     window_id,
-						     pe->tce_bypass_base,
-						     0);
+				pe->pe_number, window_id,
+				pe->table_group.tce64_start, 0);
 	}
 	if (rc)
 		pe_err(pe, "OPAL error %lld configuring bypass window\n", rc);
@@ -2385,7 +2382,8 @@ static long pnv_pci_ioda2_create_table(struct iommu_table_group *table_group,
 	struct pnv_ioda_pe *pe = container_of(table_group, struct pnv_ioda_pe,
 			table_group);
 	int nid = pe->phb->hose->node;
-	__u64 bus_offset = num ? pe->tce_bypass_base : table_group->tce32_start;
+	__u64 bus_offset = num ?
+		pe->table_group.tce64_start : table_group->tce32_start;
 	long ret;
 	struct iommu_table *tbl;
 
@@ -2735,9 +2733,6 @@ static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
 	if (!pnv_pci_ioda_pe_dma_weight(pe))
 		return;
 
-	/* TVE #1 is selected by PCI address bit 59 */
-	pe->tce_bypass_base = 1ull << 59;
-
 	/* The PE will reserve all possible 32-bits space */
 	pe_info(pe, "Setting up 32-bit TCE table at 0..%08x\n",
 		phb->ioda.m32_pci_base);
@@ -2745,6 +2740,7 @@ static void pnv_pci_ioda2_setup_dma_pe(struct pnv_phb *phb,
 	/* Setup linux iommu table */
 	pe->table_group.tce32_start = 0;
 	pe->table_group.tce32_size = phb->ioda.m32_pci_base;
+	pe->table_group.tce64_start = 1UL << 59;
 	pe->table_group.max_dynamic_windows_supported =
 			IOMMU_TABLE_GROUP_MAX_TABLES;
 	pe->table_group.max_levels = POWERNV_IOMMU_MAX_LEVELS;

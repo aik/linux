@@ -194,6 +194,7 @@ struct iommu_table_group {
 	__u64 pgsizes; /* Bitmap of supported page sizes */
 	__u32 max_dynamic_windows_supported;
 	__u32 max_levels;
+	__u64 tce64_start;
 
 	struct iommu_group *group;
 	struct iommu_table *tables[IOMMU_TABLE_GROUP_MAX_TABLES];
