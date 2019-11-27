@@ -200,7 +200,6 @@ struct pci_dn {
 	struct eeh_dev *edev;		/* eeh device */
 #endif
 #define IODA_INVALID_PE		0xFFFFFFFF
-	unsigned int pe_number;
 #ifdef CONFIG_PCI_IOV
 	int     vf_index;		/* VF index in the PF */
 	u16     vfs_expanded;		/* number of VFs IOV BAR expanded */

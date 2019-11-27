@@ -64,7 +64,6 @@ void pseries_pcibios_bus_add_device(struct pci_dev *pdev)
 		 */
 		pdn->last_allow_rc =  0;
 		physfn_pdn      =  pci_get_pdn(pdev->physfn);
-		pdn->pe_number  =  physfn_pdn->pe_num_map[pdn->vf_index];
 	}
 #endif
 	eeh_add_device_early(pdn);
@@ -778,8 +777,8 @@ static int pseries_call_allow_unfreeze(struct eeh_dev *edev)
 			}
 		} else {
 			pdn = pci_get_pdn(edev->pdev);
-			vf_pe_array[0] = cpu_to_be16(pdn->pe_number);
 			physfn_pdn = pci_get_pdn(edev->physfn);
+			vf_pe_array[0] = cpu_to_be16(physfn_pdn->pe_num_map[pdn->vf_index]);
 			rc = pseries_send_allow_unfreeze(physfn_pdn,
 							 vf_pe_array, 1);
 			pdn->last_allow_rc = rc;

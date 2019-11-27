@@ -3584,7 +3584,6 @@ static void pnv_pci_ioda_shutdown(struct pci_controller *hose)
 void pnv_pci_dma_dev_setup(struct pci_dev *pdev)
 {
 	struct pnv_phb *phb = pci_bus_to_pnvhb(pdev->bus);
-	struct pci_dn *pdn = pci_get_pdn(pdev);
 	struct pnv_ioda_pe *pe;
 
 	/* Check if the BDFN for this device is associated with a PE yet */
@@ -3614,9 +3613,6 @@ void pnv_pci_dma_dev_setup(struct pci_dev *pdev)
 	} else {
 		pci_err(pdev, "Added to existing PE#%x\n", pe->pe_number);
 	}
-
-	if (pdn)
-		pdn->pe_number = pe->pe_number;
 
 	pnv_pci_ioda_dma_dev_setup(phb, pdev);
 }

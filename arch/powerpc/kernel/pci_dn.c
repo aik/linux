@@ -164,7 +164,6 @@ static struct pci_dn *add_one_sriov_vf_pdn(struct pci_dn *parent,
 	pdn->busno = busno;
 	pdn->devfn = devfn;
 	pdn->vf_index = vf_index;
-	pdn->pe_number = IODA_INVALID_PE;
 	INIT_LIST_HEAD(&pdn->child_list);
 	INIT_LIST_HEAD(&pdn->list);
 	list_add_tail(&pdn->list, &parent->child_list);
@@ -297,7 +296,6 @@ struct pci_dn *pci_add_device_node_info(struct pci_controller *hose,
 		return NULL;
 	dn->data = pdn;
 	pdn->phb = hose;
-	pdn->pe_number = IODA_INVALID_PE;
 	regs = of_get_property(dn, "reg", NULL);
 	if (regs) {
 		u32 addr = of_read_number(regs, 1);
