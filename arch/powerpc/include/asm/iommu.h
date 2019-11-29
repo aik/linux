@@ -97,6 +97,7 @@ struct iommu_table {
 	unsigned long  it_level_size;
 	unsigned long  it_allocated_size;
 	unsigned long  it_offset;    /* Offset into global table */
+	unsigned long  it_dmaoff;
 	unsigned long  it_base;      /* mapped address of tce table */
 	unsigned long  it_index;     /* which iommu table this is */
 	unsigned long  it_type;      /* type: PCI or Virtual Bus */

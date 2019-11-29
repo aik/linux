@@ -214,7 +214,9 @@
 #define OPAL_SECVAR_GET				176
 #define OPAL_SECVAR_GET_NEXT			177
 #define OPAL_SECVAR_ENQUEUE_UPDATE		178
-#define OPAL_LAST				178
+#define OPAL_PHB_SET_OPTION			179
+#define OPAL_PHB_GET_OPTION			180
+#define OPAL_LAST				180
 
 #define QUIESCE_HOLD			1 /* Spin all calls at entry */
 #define QUIESCE_REJECT			2 /* Fail all calls with OPAL_BUSY */
@@ -435,6 +437,11 @@ enum OpalSlotLedType {
 enum OpalSlotLedState {
 	OPAL_SLOT_LED_STATE_OFF = 0,	/* LED is OFF */
 	OPAL_SLOT_LED_STATE_ON = 1	/* LED is ON */
+};
+
+enum OpalPhbOption {
+	OPAL_PHB_OPTION_TVE1_4GB = 0x1,
+	OPAL_PHB_OPTION_MMIO_EEH_DISABLE = 0x2,
 };
 
 /*

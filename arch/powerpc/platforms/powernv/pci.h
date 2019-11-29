@@ -100,6 +100,7 @@ struct pnv_phb {
 	int			has_dbgfs;
 	struct dentry		*dbgfs;
 #endif
+	struct iommu_table	*bypass_tbl; /* PNV_IOMMU_TCE_BYPASS only */
 
 	unsigned int		msi_base;
 	unsigned int		msi32_support;
