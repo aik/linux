@@ -691,7 +691,7 @@ static long tce_iommu_create_window(struct tce_container *container,
 	container->tables[num] = tbl;
 
 	/* Return start address assigned by platform in create_table() */
-	*start_addr = tbl->it_offset << tbl->it_page_shift;
+	*start_addr = tbl->it_dmaoff << tbl->it_page_shift;
 
 	return 0;
 
@@ -842,7 +842,13 @@ static long tce_iommu_ioctl(void *iommu_data,
 			info.ddw.levels = table_group->max_levels;
 		}
 
-		ddwsz = offsetofend(struct vfio_iommu_spapr_tce_info, ddw);
+		ddwsz = offsetofend(struct vfio_iommu_spapr_tce_info,
+				dma64_window_start);
+
+		if (info.argsz >= ddwsz) {
+			info.flags |= VFIO_IOMMU_SPAPR_INFO_DDW_START;
+			info.dma64_window_start = table_group->tce64_start;
+		}
 
 		if (info.argsz >= ddwsz)
 			minsz = ddwsz;
