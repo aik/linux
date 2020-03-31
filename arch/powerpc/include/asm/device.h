@@ -18,6 +18,8 @@ struct iommu_table;
  * drivers/macintosh/macio_asic.c
  */
 struct dev_archdata {
+	/* Maximum DMA address for 1:1 mapping (when enabled) */
+	dma_addr_t		dma_max;
 	/*
 	 * These two used to be a union. However, with the hybrid ops we need
 	 * both so here we store both a DMA offset for direct mappings and

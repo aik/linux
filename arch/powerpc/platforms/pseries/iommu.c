@@ -994,7 +994,7 @@ static u64 enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 	struct ddw_query_response query;
 	struct ddw_create_response create;
 	int page_shift;
-	u64 dma_addr, max_addr;
+	u64 dma_addr, max_addr = 0, dma_max_sz = 0;
 	struct device_node *dn;
 	u32 ddw_avail[3];
 	struct direct_window *window;
@@ -1066,7 +1066,23 @@ static u64 enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 	}
 	/* verify the window * number of ptes will map the partition */
 	/* check largest block * page size > max memory hotplug addr */
-	max_addr = ddw_memory_hotplug_max();
+	/*
+	 * The "ibm,pmemory" can appear anywhere in the address space.
+	 * Assuming it is still backed by page structs, try MAX_PHYSMEM_BITS
+	 * for the upper limit and fallback to max RAM otherwise but this
+	 * disables device::dma_ops_bypass.
+	 */
+	if (of_find_node_by_type(NULL, "ibm,pmemory")) {
+		max_addr = 1ULL << (MAX_PHYSMEM_BITS - page_shift);
+		if (query.largest_available_block < max_addr) {
+			dev_info(&dev->dev, "Skipping ibm,pmemory");
+			max_addr = ddw_memory_hotplug_max();
+			dma_max_sz = max_addr;
+		}
+	} else {
+		max_addr = ddw_memory_hotplug_max();
+	}
+
 	if (query.largest_available_block < (max_addr >> page_shift)) {
 		dev_dbg(&dev->dev, "can't map partition max 0x%llx with %u "
 			  "%llu-sized pages\n", max_addr,  query.largest_available_block,
@@ -1151,6 +1167,9 @@ out_failed:
 
 out_unlock:
 	mutex_unlock(&direct_window_init_mutex);
+	if (!dev->dev.archdata.dma_max && dma_addr && dma_max_sz)
+		dev->dev.archdata.dma_max = dma_addr + dma_max_sz;
+
 	return dma_addr;
 }
 
