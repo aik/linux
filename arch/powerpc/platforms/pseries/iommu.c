@@ -991,10 +991,11 @@ static phys_addr_t ddw_memory_hotplug_max(void)
 static u64 enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 {
 	int len, ret;
+	int max_ram_len = order_base_2(ddw_memory_hotplug_max());
 	struct ddw_query_response query;
 	struct ddw_create_response create;
 	int page_shift;
-	u64 dma_addr, max_addr;
+	u64 dma_addr;
 	struct device_node *dn;
 	u32 ddw_avail[3];
 	struct direct_window *window;
@@ -1066,14 +1067,13 @@ static u64 enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 	}
 	/* verify the window * number of ptes will map the partition */
 	/* check largest block * page size > max memory hotplug addr */
-	max_addr = ddw_memory_hotplug_max();
-	if (query.largest_available_block < (max_addr >> page_shift)) {
+	len = max_ram_len;
+	if (query.largest_available_block < (1ULL << (len - page_shift))) {
 		dev_dbg(&dev->dev, "can't map partition max 0x%llx with %u "
-			  "%llu-sized pages\n", max_addr,  query.largest_available_block,
+			  "%llu-sized pages\n", 1ULL << len, query.largest_available_block,
 			  1ULL << page_shift);
 		goto out_failed;
 	}
-	len = order_base_2(max_addr);
 	win64 = kzalloc(sizeof(struct property), GFP_KERNEL);
 	if (!win64) {
 		dev_info(&dev->dev,
