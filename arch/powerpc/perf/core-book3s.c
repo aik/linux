@@ -2284,6 +2284,8 @@ int register_power_pmu(struct power_pmu *pmu)
 		pmu->name);
 
 	power_pmu.attr_groups = ppmu->attr_groups;
+	pr_err("___K___ (%u) %s %u: PPMU %lx %lx\n", smp_processor_id(), __func__, __LINE__,
+		(unsigned long) ppmu, ppmu ? (unsigned long) ppmu->bhrb_filter_map : 0);
 
 #ifdef MSR_HV
 	/*

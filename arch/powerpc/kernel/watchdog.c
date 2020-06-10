@@ -85,6 +85,8 @@ static unsigned long __wd_smp_lock;
 static cpumask_t wd_smp_cpus_pending;
 static cpumask_t wd_smp_cpus_stuck;
 static u64 wd_smp_last_reset_tb;
+static const char *wd_smp_last_reset_tb_fn;
+static int wd_smp_last_reset_tb_n;
 
 static inline void wd_smp_lock(unsigned long *flags)
 {
@@ -115,9 +117,10 @@ static void wd_lockup_ipi(struct pt_regs *regs)
 	u64 tb = get_tb();
 
 	pr_emerg("CPU %d Hard LOCKUP\n", cpu);
-	pr_emerg("CPU %d TB:%lld, last heartbeat TB:%lld (%lldms ago)\n",
+	pr_emerg("CPU %d TB:%lld, last heartbeat TB:%lld (%lldms ago)  at %s:%d\n",
 		 cpu, tb, per_cpu(wd_timer_tb, cpu),
-		 tb_to_ns(tb - per_cpu(wd_timer_tb, cpu)) / 1000000);
+		 tb_to_ns(tb - per_cpu(wd_timer_tb, cpu)) / 1000000,
+		 wd_smp_last_reset_tb_fn, wd_smp_last_reset_tb_n);
 	print_modules();
 	print_irqtrace_events(current);
 	if (regs)
@@ -134,6 +137,8 @@ static void set_cpumask_stuck(const struct cpumask *cpumask, u64 tb)
 	cpumask_andnot(&wd_smp_cpus_pending, &wd_smp_cpus_pending, cpumask);
 	if (cpumask_empty(&wd_smp_cpus_pending)) {
 		wd_smp_last_reset_tb = tb;
+		wd_smp_last_reset_tb_fn = __func__;
+		wd_smp_last_reset_tb_n = __LINE__;
 		cpumask_andnot(&wd_smp_cpus_pending,
 				&wd_cpus_enabled,
 				&wd_smp_cpus_stuck);
@@ -160,9 +165,10 @@ static void watchdog_smp_panic(int cpu, u64 tb)
 
 	pr_emerg("CPU %d detected hard LOCKUP on other CPUs %*pbl\n",
 		 cpu, cpumask_pr_args(&wd_smp_cpus_pending));
-	pr_emerg("CPU %d TB:%lld, last SMP heartbeat TB:%lld (%lldms ago)\n",
+	pr_emerg("CPU %d TB:%lld, last SMP heartbeat TB:%lld (%lldms ago) at %s:%d\n",
 		 cpu, tb, wd_smp_last_reset_tb,
-		 tb_to_ns(tb - wd_smp_last_reset_tb) / 1000000);
+		 tb_to_ns(tb - wd_smp_last_reset_tb) / 1000000,
+		 wd_smp_last_reset_tb_fn, wd_smp_last_reset_tb_n);
 
 	if (!sysctl_hardlockup_all_cpu_backtrace) {
 		/*
@@ -227,6 +233,8 @@ static void wd_smp_clear_cpu_pending(int cpu, u64 tb)
 		wd_smp_lock(&flags);
 		if (cpumask_empty(&wd_smp_cpus_pending)) {
 			wd_smp_last_reset_tb = tb;
+			wd_smp_last_reset_tb_fn = __func__;
+			wd_smp_last_reset_tb_n = __LINE__;
 			cpumask_andnot(&wd_smp_cpus_pending,
 					&wd_cpus_enabled,
 					&wd_smp_cpus_stuck);
@@ -271,9 +279,10 @@ void soft_nmi_interrupt(struct pt_regs *regs)
 
 		pr_emerg("CPU %d self-detected hard LOCKUP @ %pS\n",
 			 cpu, (void *)regs->nip);
-		pr_emerg("CPU %d TB:%lld, last heartbeat TB:%lld (%lldms ago)\n",
+		pr_emerg("CPU %d TB:%lld, last heartbeat TB:%lld (%lldms ago) at %s:%d\n",
 			 cpu, tb, per_cpu(wd_timer_tb, cpu),
-			 tb_to_ns(tb - per_cpu(wd_timer_tb, cpu)) / 1000000);
+			 tb_to_ns(tb - per_cpu(wd_timer_tb, cpu)) / 1000000,
+			 wd_smp_last_reset_tb_fn, wd_smp_last_reset_tb_n);
 		print_modules();
 		print_irqtrace_events(current);
 		show_regs(regs);

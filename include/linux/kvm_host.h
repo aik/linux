@@ -26,6 +26,7 @@
 #include <linux/rcuwait.h>
 #include <linux/refcount.h>
 #include <linux/nospec.h>
+#include <linux/lockdep.h>
 #include <asm/signal.h>
 
 #include <linux/kvm.h>
@@ -629,6 +630,17 @@ void kvm_put_kvm_no_destroy(struct kvm *kvm);
 static inline struct kvm_memslots *__kvm_memslots(struct kvm *kvm, int as_id)
 {
 	as_id = array_index_nospec(as_id, KVM_ADDRESS_SPACE_NUM);
+	{
+		bool c =
+			lockdep_is_held(&kvm->slots_lock) ||
+			!refcount_read(&kvm->users_count) ||
+			srcu_read_lock_held(&kvm->srcu);
+		if (!c)
+			pr_err("___K___ (%u) %s %u: %d %d %d\n", smp_processor_id(),
+				__func__, __LINE__, lockdep_is_held(&kvm->slots_lock),
+				refcount_read(&kvm->users_count),
+				srcu_read_lock_held(&kvm->srcu));
+	}
 	return srcu_dereference_check(kvm->memslots[as_id], &kvm->srcu,
 			lockdep_is_held(&kvm->slots_lock) ||
 			!refcount_read(&kvm->users_count));
