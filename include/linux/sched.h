@@ -1001,6 +1001,14 @@ struct task_struct {
 	int				softirqs_enabled;
 	int				softirq_context;
 	int				irq_config;
+	struct {
+		unsigned long irq_events;
+		unsigned long trap;
+		unsigned long softe;
+		unsigned long nip;
+	} x[16];
+	int nx;
+	bool x_dump;
 #endif
 
 #ifdef CONFIG_LOCKDEP

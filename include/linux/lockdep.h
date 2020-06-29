@@ -703,10 +703,27 @@ do {									\
 	lock_release(&(lock)->dep_map, _THIS_IP_);			\
 } while (0)
 
+extern void __aikdbg_print(struct task_struct *c, const char *from, int nnn);
+#define aikdbg_print(c)	__aikdbg_print((c), __func__, __LINE__)
+extern void aikdebug_x(struct pt_regs *regs);
+
 #define lockdep_assert_irqs_enabled()	do {				\
+		if (debug_locks && !current->lockdep_recursion &&	\
+			  	!current->hardirqs_enabled) \
+			  aikdbg_print(current); \
 		WARN_ONCE(debug_locks && !current->lockdep_recursion &&	\
 			  !current->hardirqs_enabled,			\
-			  "IRQs not enabled as expected\n");		\
+			  "IRQs not enabled as expected dbg=%d rec=%d hardirqdis=%d xxx=%d " \
+			  "enip=%lx enev=%d dip=%lx dev=%d ron=%ld roff=%ld %ld %ld %ld %ld\n", \
+			  debug_locks, current->lockdep_recursion, current->hardirqs_enabled, \
+			  atomic_read(&aikdbg), \
+			current->hardirq_enable_ip, current->hardirq_enable_event, \
+			current->hardirq_disable_ip, current->hardirq_disable_event, \
+			aikdebug_atomic_read_on(), \
+			aikdebug_atomic_read_off(), \
+			aikdebug_atomic_read(0), aikdebug_atomic_read(1), \
+			aikdebug_atomic_read(2), aikdebug_atomic_read(3) \
+			); \
 	} while (0)
 
 #define lockdep_assert_irqs_disabled()	do {				\

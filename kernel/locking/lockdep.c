@@ -3759,6 +3759,62 @@ void noinstr lockdep_hardirqs_off(unsigned long ip)
 }
 EXPORT_SYMBOL_GPL(lockdep_hardirqs_off);
 
+void __aikdbg_print(struct task_struct *c, const char *from, int nnn)
+{
+	int n;
+	bool was = current->hardirqs_enabled;
+
+	for (n = 0; n < 1000; ++n) {
+		if (current->hardirqs_enabled != was)
+			break;
+	}
+
+	if (current->hardirqs_enabled != was)
+		pr_err("___K___ (%u) %s %u: It is barrier after all\n", smp_processor_id(), __func__, __LINE__);
+
+
+	pr_err("___K___ (%u) %s %u: nx=%d\n", smp_processor_id(), from, nnn,
+			current->nx);
+	for (n = 0; n < current->nx; ++n) {
+		pr_err("\t%ld %lx %lx %lx\n",
+			current->x[n].irq_events,
+			current->x[n].nip,
+			current->x[n].trap,
+			current->x[n].softe);
+	}
+}
+EXPORT_SYMBOL_GPL(__aikdbg_print);
+
+void aikdebug_x(struct pt_regs *regs)
+{
+	if (regs) {
+		int n = current->nx;
+
+		current->x[n].irq_events = current->irq_events;
+		current->x[n].nip = regs->nip;
+		current->x[n].trap = regs->trap;
+		current->x[n].softe = regs->softe;
+		++current->nx;
+		if (current->nx >= ARRAY_SIZE(current->x) || n) {
+			aikdbg_print(current);
+			current->x_dump = true;
+		}
+		return;
+	}
+
+	if (current->nx) {
+		if (current->x_dump)
+			aikdbg_print(current);
+		--current->nx;
+		if (!current->nx)
+			current->x_dump = false;
+		return;
+	}
+	pr_err("___K___ (%u) %s %u: This is not good at all\n", smp_processor_id(), __func__, __LINE__);
+	aikdbg_print(current);
+}
+EXPORT_SYMBOL_GPL(aikdebug_x);
+
 /*
  * Softirqs will be enabled:
  */

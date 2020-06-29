@@ -333,6 +333,7 @@ notrace unsigned long interrupt_exit_kernel_prepare(struct pt_regs *regs, unsign
 
 	local_irq_save(flags);
 
+	aikdebug_x(regs);
 	if (regs->softe == IRQS_ENABLED) {
 		/* Returning to a kernel context with local irqs enabled. */
 		WARN_ON_ONCE(!(regs->msr & MSR_EE));
@@ -377,6 +378,7 @@ again:
 	 * value from the check above.
 	 */
 	kuap_restore_amr(regs, amr);
+	aikdebug_x(NULL);
 
 	return ret;
 }
