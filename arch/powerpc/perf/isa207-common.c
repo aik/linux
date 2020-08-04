@@ -214,6 +214,40 @@ static inline u64 isa207_find_source(u64 idx, u32 sub_idx)
 	return ret;
 }
 
+int check_attr_inv_config(u64 event)
+{
+	u64 val, sample_mode, sample_el;
+
+	if (event & EVENT_IS_MARKED) {
+		val = (event >> EVENT_SAMPLE_SHIFT) & EVENT_SAMPLE_MASK;
+		sample_mode = val & 0x3;
+		sample_el = (val >> 2) & 0x7;
+
+		/*
+		 * MMCRA[61:62] (Random Sampling Mode (SM))
+		 * 0b11 is reserved
+		 */
+		if (sample_mode == 0x3)
+			return -1;
+
+		/*
+		 * Check for all Reserved case
+		 */
+		switch (val) {
+		case 0xC:
+		case 0x5:
+		case 0x1A:
+		case 0x1E:
+		case 0x13:
+		case 0x19:
+		case 0x1D:
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 void isa207_get_mem_data_src(union perf_mem_data_src *dsrc, u32 flags,
 							struct pt_regs *regs)
 {

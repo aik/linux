@@ -67,6 +67,7 @@ struct power_pmu {
 	 * the pmu supports extended perf regs capability
 	 */
 	int		capabilities;
+	int             (*check_attr_config)(u64 event_id);
 };
 
 /*

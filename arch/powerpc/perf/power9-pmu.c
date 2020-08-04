@@ -437,6 +437,7 @@ static struct power_pmu power9_pmu = {
 	.attr_groups		= power9_pmu_attr_groups,
 	.bhrb_nr		= 32,
 	.capabilities           = PERF_PMU_CAP_EXTENDED_REGS,
+	.check_attr_config	= check_attr_inv_config,
 };
 
 int init_power9_pmu(void)

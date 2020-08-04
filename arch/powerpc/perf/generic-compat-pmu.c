@@ -217,6 +217,7 @@ static struct power_pmu generic_compat_pmu = {
 	.generic_events		= compat_generic_events,
 	.cache_events		= &generic_compat_cache_events,
 	.attr_groups		= generic_compat_pmu_attr_groups,
+	.check_attr_config	= check_attr_inv_config,
 };
 
 int init_generic_compat_pmu(void)

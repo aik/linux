@@ -258,5 +258,6 @@ int isa207_get_alternatives(u64 event, u64 alt[], int size, unsigned int flags,
 void isa207_get_mem_data_src(union perf_mem_data_src *dsrc, u32 flags,
 							struct pt_regs *regs);
 void isa207_get_mem_weight(u64 *weight);
+int check_attr_inv_config(u64 event);
 
 #endif

@@ -1921,6 +1921,9 @@ static int power_pmu_event_init(struct perf_event *event)
 
 		if (ppmu->blacklist_ev && is_event_blacklisted(ev))
 			return -EINVAL;
+
+		if (ppmu->check_attr_config && ppmu->check_attr_config(ev))
+			return -EINVAL;
 		break;
 	default:
 		return -ENOENT;
