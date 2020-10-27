@@ -295,18 +295,6 @@ static void irq_sysfs_add(int irq, struct irq_desc *desc)
 	}
 }
 
-static void irq_sysfs_del(struct irq_desc *desc)
-{
-	/*
-	 * If irq_sysfs_init() has not yet been invoked (early boot), then
-	 * irq_kobj_base is NULL and the descriptor was never added.
-	 * kobject_del() complains about a object with no parent, so make
-	 * it conditional.
-	 */
-	if (irq_kobj_base)
-		kobject_del(&desc->kobj);
-}
-
 static int __init irq_sysfs_init(void)
 {
 	struct irq_desc *desc;
@@ -337,7 +325,6 @@ static struct kobj_type irq_kobj_type = {
 };
 
 static void irq_sysfs_add(int irq, struct irq_desc *desc) {}
-static void irq_sysfs_del(struct irq_desc *desc) {}
 
 #endif /* CONFIG_SYSFS */
 
@@ -419,39 +406,34 @@ err_desc:
 	return NULL;
 }
 
-static void irq_kobj_release(struct kobject *kobj)
+static void delayed_free_desc(struct rcu_head *rhp)
 {
-	struct irq_desc *desc = container_of(kobj, struct irq_desc, kobj);
+	struct irq_desc *desc = container_of(rhp, struct irq_desc, rcu);
 
 	free_masks(desc);
 	free_percpu(desc->kstat_irqs);
 	kfree(desc);
 }
 
-static void delayed_free_desc(struct rcu_head *rhp)
+static void free_desc(unsigned int irq)
 {
-	struct irq_desc *desc = container_of(rhp, struct irq_desc, rcu);
+	struct irq_desc *desc = irq_to_desc(irq);
 
 	kobject_put(&desc->kobj);
 }
 
-static void free_desc(unsigned int irq)
+static void irq_kobj_release(struct kobject *kobj)
 {
-	struct irq_desc *desc = irq_to_desc(irq);
+	struct irq_desc *desc = container_of(kobj, struct irq_desc, kobj);
+	unsigned int irq = desc->irq_data.irq;
 
 	irq_remove_debugfs_entry(desc);
 	unregister_irq_proc(irq, desc);
 
 	/*
-	 * sparse_irq_lock protects also show_interrupts() and
-	 * kstat_irq_usr(). Once we deleted the descriptor from the
-	 * sparse tree we can free it. Access in proc will fail to
-	 * lookup the descriptor.
-	 *
 	 * The sysfs entry must be serialized against a concurrent
 	 * irq_sysfs_init() as well.
 	 */
-	irq_sysfs_del(desc);
 	delete_irq_desc(irq);
 
 	/*
