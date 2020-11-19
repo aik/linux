@@ -407,6 +407,7 @@ static inline unsigned long raw_copy_from_user(void *to,
 		const void __user *from, unsigned long n)
 {
 	unsigned long ret;
+        unsigned long kuap_state;
 	if (__builtin_constant_p(n) && (n <= 8)) {
 		ret = 1;
 
@@ -433,9 +434,10 @@ static inline unsigned long raw_copy_from_user(void *to,
 	}
 
 	barrier_nospec();
+        kuap_state = get_kuap();
 	allow_read_from_user(from, n);
 	ret = __copy_tofrom_user((__force void __user *)to, from, n);
-	prevent_read_from_user(from, n);
+	set_kuap(kuap_state);
 	return ret;
 }
 
