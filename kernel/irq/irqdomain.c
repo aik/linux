@@ -485,7 +485,7 @@ static void irq_domain_set_mapping(struct irq_domain *domain,
 	}
 }
 
-void irq_domain_disassociate(struct irq_domain *domain, unsigned int irq)
+static void irq_domain_disassociate(struct irq_domain *domain, unsigned int irq)
 {
 	struct irq_data *irq_data = irq_get_irq_data(irq);
 	irq_hw_number_t hwirq;
@@ -582,6 +582,13 @@ void irq_domain_associate_many(struct irq_domain *domain, unsigned int irq_base,
 }
 EXPORT_SYMBOL_GPL(irq_domain_associate_many);
 
+static void irq_mapped_free_desc(struct irq_desc *desc)
+{
+	unsigned int virq = desc->irq_data.irq;
+
+	irq_domain_disassociate(desc->irq_data.domain, virq);
+}
+
 /**
  * irq_create_direct_mapping() - Allocate an irq for direct mapping
  * @domain: domain to allocate the irq for or NULL for default domain
@@ -638,6 +645,7 @@ unsigned int irq_create_mapping(struct irq_domain *domain,
 {
 	struct device_node *of_node;
 	int virq;
+	struct irq_desc *desc;
 
 	pr_debug("irq_create_mapping(0x%p, 0x%lx)\n", domain, hwirq);
 
@@ -673,6 +681,9 @@ unsigned int irq_create_mapping(struct irq_domain *domain,
 
 	pr_debug("irq %lu on domain %s mapped to virtual irq %u\n",
 		hwirq, of_node_full_name(of_node), virq);
+
+	desc = irq_to_desc(virq);
+	desc->free_irq = irq_mapped_free_desc;
 
 	return virq;
 }
@@ -865,7 +876,6 @@ void irq_dispose_mapping(unsigned int virq)
 	if (irq_domain_is_hierarchy(domain)) {
 		irq_domain_free_irqs(virq, 1);
 	} else {
-		irq_domain_disassociate(domain, virq);
 		irq_free_desc(virq);
 	}
 }

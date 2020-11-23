@@ -10,5 +10,6 @@
 struct irq_desc;
 struct irq_data;
 typedef	void (*irq_flow_handler_t)(struct irq_desc *desc);
+typedef	void (*irq_free_handler_t)(struct irq_desc *desc);
 
 #endif

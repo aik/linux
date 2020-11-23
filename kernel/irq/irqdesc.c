@@ -427,6 +427,9 @@ static void irq_kobj_release(struct kobject *kobj)
 	struct irq_desc *desc = container_of(kobj, struct irq_desc, kobj);
 	unsigned int irq = desc->irq_data.irq;
 
+	if (desc->free_irq)
+		desc->free_irq(desc);
+
 	irq_remove_debugfs_entry(desc);
 	unregister_irq_proc(irq, desc);
 
