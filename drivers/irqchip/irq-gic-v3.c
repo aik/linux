@@ -1163,8 +1163,7 @@ static void __init gic_smp_init(void)
 
 	/* Register all 8 non-secure SGIs */
 	base_sgi = __irq_domain_alloc_irqs(gic_data.domain, -1, 8,
-					   NUMA_NO_NODE, &sgi_fwspec,
-					   false, NULL);
+					   NUMA_NO_NODE, &sgi_fwspec, NULL);
 	if (WARN_ON(base_sgi <= 0))
 		return;
 

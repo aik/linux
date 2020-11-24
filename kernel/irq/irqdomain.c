@@ -1438,12 +1438,10 @@ out_free_irq_data:
  * @nr_irqs:	number of IRQs to allocate
  * @node:	NUMA node id for memory allocation
  * @arg:	domain specific argument
- * @realloc:	IRQ descriptors have already been allocated if true
  * @affinity:	Optional irq affinity mask for multiqueue devices
  *
  * Allocate IRQ numbers and initialized all data structures to support
  * hierarchy IRQ domains.
- * Parameter @realloc is mainly to support legacy IRQs.
  * Returns error code or allocated IRQ number
  *
  * The whole process to setup an IRQ has been split into two steps.
@@ -1455,7 +1453,7 @@ out_free_irq_data:
  */
 int __irq_domain_alloc_irqs(struct irq_domain *domain, int irq_base,
 			    unsigned int nr_irqs, int node, void *arg,
-			    bool realloc, const struct irq_affinity_desc *affinity)
+			    const struct irq_affinity_desc *affinity)
 {
 	int ret, virq;
 

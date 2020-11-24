@@ -1059,7 +1059,6 @@ static void gpiochip_set_hierarchical_irqchip(struct gpio_chip *gc,
 						      1,
 						      NUMA_NO_NODE,
 						      &fwspec,
-						      false,
 						      NULL);
 			if (ret < 0) {
 				chip_err(gc,

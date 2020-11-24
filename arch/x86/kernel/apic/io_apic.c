@@ -973,7 +973,7 @@ static int alloc_irq_from_domain(struct irq_domain *domain, int ioapic, u32 gsi,
 	if (irq == -1 || !legacy)
 		return __irq_domain_alloc_irqs(domain, irq, 1,
 					       ioapic_alloc_attr_node(info),
-					       info, false, NULL);
+					       info, NULL);
 
 	return __irq_domain_alloc_irqs_data(domain, irq, 1,
 					    ioapic_alloc_attr_node(info),

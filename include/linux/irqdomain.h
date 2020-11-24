@@ -475,7 +475,6 @@ extern int __irq_domain_alloc_irqs_data(struct irq_domain *domain, int virq,
 					const struct irq_affinity_desc *affinity);
 extern int __irq_domain_alloc_irqs(struct irq_domain *domain, int irq_base,
 				   unsigned int nr_irqs, int node, void *arg,
-				   bool realloc,
 				   const struct irq_affinity_desc *affinity);
 extern void irq_domain_free_irqs(unsigned int virq, unsigned int nr_irqs);
 extern int irq_domain_activate_irq(struct irq_data *irq_data, bool early);
@@ -484,8 +483,7 @@ extern void irq_domain_deactivate_irq(struct irq_data *irq_data);
 static inline int irq_domain_alloc_irqs(struct irq_domain *domain,
 			unsigned int nr_irqs, int node, void *arg)
 {
-	return __irq_domain_alloc_irqs(domain, -1, nr_irqs, node, arg, false,
-				       NULL);
+	return __irq_domain_alloc_irqs(domain, -1, nr_irqs, node, arg, NULL);
 }
 
 extern int irq_domain_alloc_irqs_hierarchy(struct irq_domain *domain,

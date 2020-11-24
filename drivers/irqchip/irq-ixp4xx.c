@@ -353,7 +353,6 @@ void __init ixp4xx_irq_init(resource_size_t irqbase,
 					      chunk->nr_irqs,
 					      NUMA_NO_NODE,
 					      &fwspec,
-					      false,
 					      NULL);
 		if (ret < 0) {
 			pr_crit("IXP4XX: can not allocate irqs in hierarchy %d\n",
