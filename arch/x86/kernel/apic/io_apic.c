@@ -970,9 +970,14 @@ static int alloc_irq_from_domain(struct irq_domain *domain, int ioapic, u32 gsi,
 		return -1;
 	}
 
-	return __irq_domain_alloc_irqs(domain, irq, 1,
-				       ioapic_alloc_attr_node(info),
-				       info, legacy, NULL);
+	if (irq == -1 || !legacy)
+		return __irq_domain_alloc_irqs(domain, irq, 1,
+					       ioapic_alloc_attr_node(info),
+					       info, false, NULL);
+
+	return __irq_domain_alloc_irqs_data(domain, irq, 1,
+					    ioapic_alloc_attr_node(info),
+					    info, NULL);
 }
 
 /*
@@ -1006,7 +1011,7 @@ static int alloc_isa_irq_from_domain(struct irq_domain *domain,
 			return -ENOMEM;
 	} else {
 		info->flags |= X86_IRQ_ALLOC_LEGACY;
-		irq = __irq_domain_alloc_irqs(domain, irq, 1, node, info, true,
+		irq = __irq_domain_alloc_irqs_data(domain, irq, 1, node, info,
 					      NULL);
 		if (irq >= 0) {
 			irq_data = irq_domain_get_irq_data(domain, irq);

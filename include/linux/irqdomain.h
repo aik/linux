@@ -470,6 +470,9 @@ static inline struct irq_domain *irq_domain_add_hierarchy(struct irq_domain *par
 					   ops, host_data);
 }
 
+extern int __irq_domain_alloc_irqs_data(struct irq_domain *domain, int virq,
+					unsigned int nr_irqs, int node, void *arg,
+					const struct irq_affinity_desc *affinity);
 extern int __irq_domain_alloc_irqs(struct irq_domain *domain, int irq_base,
 				   unsigned int nr_irqs, int node, void *arg,
 				   bool realloc,

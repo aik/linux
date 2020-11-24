@@ -1386,6 +1386,51 @@ int irq_domain_alloc_irqs_hierarchy(struct irq_domain *domain,
 	return domain->ops->alloc(domain, irq_base, nr_irqs, arg);
 }
 
+int __irq_domain_alloc_irqs_data(struct irq_domain *domain, int virq,
+				 unsigned int nr_irqs, int node, void *arg,
+				 const struct irq_affinity_desc *affinity)
+{
+	int i, ret;
+
+	if (domain == NULL) {
+		domain = irq_default_domain;
+		if (WARN(!domain, "domain is NULL; cannot allocate IRQ\n"))
+			return -EINVAL;
+	}
+
+	if (irq_domain_alloc_irq_data(domain, virq, nr_irqs)) {
+		pr_debug("cannot allocate memory for IRQ%d\n", virq);
+		ret = -ENOMEM;
+		goto out_free_irq_data;
+	}
+
+	mutex_lock(&irq_domain_mutex);
+	ret = irq_domain_alloc_irqs_hierarchy(domain, virq, nr_irqs, arg);
+	if (ret < 0) {
+		mutex_unlock(&irq_domain_mutex);
+		goto out_free_irq_data;
+	}
+
+	for (i = 0; i < nr_irqs; i++) {
+		ret = irq_domain_trim_hierarchy(virq + i);
+		if (ret) {
+			mutex_unlock(&irq_domain_mutex);
+			goto out_free_irq_data;
+		}
+	}
+
+	for (i = 0; i < nr_irqs; i++) {
+		irq_domain_insert_irq(virq + i);
+	}
+	mutex_unlock(&irq_domain_mutex);
+
+	return virq;
+
+out_free_irq_data:
+	irq_domain_free_irq_data(virq, nr_irqs);
+	return ret;
+}
+
 /**
  * __irq_domain_alloc_irqs - Allocate IRQs from domain
  * @domain:	domain to allocate from
@@ -1412,7 +1457,7 @@ int __irq_domain_alloc_irqs(struct irq_domain *domain, int irq_base,
 			    unsigned int nr_irqs, int node, void *arg,
 			    bool realloc, const struct irq_affinity_desc *affinity)
 {
-	int i, ret, virq;
+	int ret, virq;
 
 	if (domain == NULL) {
 		domain = irq_default_domain;
@@ -1420,47 +1465,19 @@ int __irq_domain_alloc_irqs(struct irq_domain *domain, int irq_base,
 			return -EINVAL;
 	}
 
-	if (realloc && irq_base >= 0) {
-		virq = irq_base;
-	} else {
-		virq = irq_domain_alloc_descs(irq_base, nr_irqs, 0, node,
-					      affinity);
-		if (virq < 0) {
-			pr_debug("cannot allocate IRQ(base %d, count %d)\n",
-				 irq_base, nr_irqs);
-			return virq;
-		}
+	virq = irq_domain_alloc_descs(irq_base, nr_irqs, 0, node, affinity);
+	if (virq < 0) {
+		pr_debug("cannot allocate IRQ(base %d, count %d)\n",
+			 irq_base, nr_irqs);
+		return virq;
 	}
 
-	if (irq_domain_alloc_irq_data(domain, virq, nr_irqs)) {
-		pr_debug("cannot allocate memory for IRQ%d\n", virq);
-		ret = -ENOMEM;
+	ret = __irq_domain_alloc_irqs_data(domain, virq, nr_irqs, node, arg, affinity);
+	if (ret <= 0)
 		goto out_free_desc;
-	}
-
-	mutex_lock(&irq_domain_mutex);
-	ret = irq_domain_alloc_irqs_hierarchy(domain, virq, nr_irqs, arg);
-	if (ret < 0) {
-		mutex_unlock(&irq_domain_mutex);
-		goto out_free_irq_data;
-	}
-
-	for (i = 0; i < nr_irqs; i++) {
-		ret = irq_domain_trim_hierarchy(virq + i);
-		if (ret) {
-			mutex_unlock(&irq_domain_mutex);
-			goto out_free_irq_data;
-		}
-	}
-	
-	for (i = 0; i < nr_irqs; i++)
-		irq_domain_insert_irq(virq + i);
-	mutex_unlock(&irq_domain_mutex);
 
 	return virq;
 
-out_free_irq_data:
-	irq_domain_free_irq_data(virq, nr_irqs);
 out_free_desc:
 	irq_free_descs(virq, nr_irqs);
 	return ret;
