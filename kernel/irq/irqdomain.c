@@ -863,21 +863,9 @@ EXPORT_SYMBOL_GPL(irq_create_of_mapping);
  */
 void irq_dispose_mapping(unsigned int virq)
 {
-	struct irq_data *irq_data = irq_get_irq_data(virq);
-	struct irq_domain *domain;
+	struct irq_desc *desc = irq_to_desc(virq);
 
-	if (!virq || !irq_data)
-		return;
-
-	domain = irq_data->domain;
-	if (WARN_ON(domain == NULL))
-		return;
-
-	if (irq_domain_is_hierarchy(domain)) {
-		irq_domain_free_irqs(virq, 1);
-	} else {
-		irq_free_desc(virq);
-	}
+	kobject_put(&desc->kobj);
 }
 EXPORT_SYMBOL_GPL(irq_dispose_mapping);
 
@@ -1396,6 +1384,19 @@ int irq_domain_alloc_irqs_hierarchy(struct irq_domain *domain,
 	return domain->ops->alloc(domain, irq_base, nr_irqs, arg);
 }
 
+static void irq_domain_hierarchy_free_desc(struct irq_desc *desc)
+{
+	unsigned int virq = desc->irq_data.irq;
+	struct irq_data *data = irq_get_irq_data(virq);
+
+	mutex_lock(&irq_domain_mutex);
+	irq_domain_remove_irq(virq);
+	irq_domain_free_irqs_hierarchy(data->domain, virq, 1);
+	mutex_unlock(&irq_domain_mutex);
+
+	irq_domain_free_irq_data(virq, 1);
+}
+
 int __irq_domain_alloc_irqs_data(struct irq_domain *domain, int virq,
 				 unsigned int nr_irqs, int node, void *arg,
 				 const struct irq_affinity_desc *affinity)
@@ -1430,7 +1431,10 @@ int __irq_domain_alloc_irqs_data(struct irq_domain *domain, int virq,
 	}
 
 	for (i = 0; i < nr_irqs; i++) {
+		struct irq_desc *desc = irq_to_desc(virq + i);
+
 		irq_domain_insert_irq(virq + i);
+		desc->free_irq = irq_domain_hierarchy_free_desc;
 	}
 	mutex_unlock(&irq_domain_mutex);
 
@@ -1675,14 +1679,11 @@ void irq_domain_free_irqs(unsigned int virq, unsigned int nr_irqs)
 		 "NULL pointer, cannot free irq\n"))
 		return;
 
-	mutex_lock(&irq_domain_mutex);
-	for (i = 0; i < nr_irqs; i++)
-		irq_domain_remove_irq(virq + i);
-	irq_domain_free_irqs_hierarchy(data->domain, virq, nr_irqs);
-	mutex_unlock(&irq_domain_mutex);
+	for (i = 0; i < nr_irqs; i++) {
+		struct irq_desc *desc = irq_to_desc(virq + i);
 
-	irq_domain_free_irq_data(virq, nr_irqs);
-	irq_free_descs(virq, nr_irqs);
+		kobject_put(&desc->kobj);
+	}
 }
 
 /**
