@@ -75,18 +75,12 @@ int irq_reserve_ipi(struct irq_domain *domain,
 		}
 	}
 
-	virq = irq_domain_alloc_descs(-1, nr_irqs, 0, NUMA_NO_NODE, NULL);
-	if (virq <= 0) {
-		pr_warn("Can't reserve IPI, failed to alloc descs\n");
-		return -ENOMEM;
-	}
-
-	virq = __irq_domain_alloc_irqs(domain, virq, nr_irqs, NUMA_NO_NODE,
-				       (void *) dest, true, NULL);
+	virq = __irq_domain_alloc_irqs(domain, -1, nr_irqs, NUMA_NO_NODE,
+				       (void *) dest, false, NULL);
 
 	if (virq <= 0) {
 		pr_warn("Can't reserve IPI, failed to alloc hw irqs\n");
-		goto free_descs;
+		return -EBUSY;
 	}
 
 	for (i = 0; i < nr_irqs; i++) {
@@ -96,10 +90,6 @@ int irq_reserve_ipi(struct irq_domain *domain,
 		irq_set_status_flags(virq + i, IRQ_NO_BALANCING);
 	}
 	return virq;
-
-free_descs:
-	irq_free_descs(virq, nr_irqs);
-	return -EBUSY;
 }
 
 /**
