@@ -311,6 +311,23 @@ again:
 	}
 }
 
+#if defined(CONFIG_PPC_BOOK3S_64) && defined(CONFIG_PPC_KUAP)
+static inline void replay_soft_interrupts_irqrestore(void)
+{
+	unsigned long kuap_state = get_kuap();
+
+	if (kuap_state != AMR_KUAP_BLOCKED)
+		set_kuap(AMR_KUAP_BLOCKED);
+
+	replay_soft_interrupts();
+
+	if (kuap_state != AMR_KUAP_BLOCKED)
+		set_kuap(kuap_state);
+}
+#else
+#define replay_soft_interrupts_irqrestore() replay_soft_interrupts()
+#endif
+
 notrace void arch_local_irq_restore(unsigned long mask)
 {
 	unsigned char irq_happened;
@@ -319,6 +336,14 @@ notrace void arch_local_irq_restore(unsigned long mask)
 	irq_soft_mask_set(mask);
 	if (mask)
 		return;
+
+	/*
+	 * It fires if anything calls local_irq_enable or restore when
+	 * KUAP is enabled, and the code handles that just fine by saving
+	 * and re-locking AMR but we would like to remove those calls,
+	 * hence the warning.
+	 */
+	kuap_check_amr();
 
 	/*
 	 * From this point onward, we can take interrupts, preempt,
@@ -373,7 +398,7 @@ notrace void arch_local_irq_restore(unsigned long mask)
 	irq_soft_mask_set(IRQS_ALL_DISABLED);
 	trace_hardirqs_off();
 
-	replay_soft_interrupts();
+	replay_soft_interrupts_irqrestore();
 	local_paca->irq_happened = 0;
 
 	trace_hardirqs_on();
