@@ -1161,8 +1161,15 @@ int iommu_add_device(struct iommu_table_group *table_group, struct device *dev)
 }
 EXPORT_SYMBOL_GPL(iommu_add_device);
 
+static int iommu_group_devices_cb(struct device *dev, void *data)
+{
+	return 1;
+}
+
 void iommu_del_device(struct device *dev)
 {
+	struct iommu_group *grp = iommu_group_get(dev);
+
 	/*
 	 * Some devices might not have IOMMU table and group
 	 * and we needn't detach them from the associated
@@ -1175,6 +1182,19 @@ void iommu_del_device(struct device *dev)
 	}
 
 	iommu_group_remove_device(dev);
+
+	if (!iommu_group_for_each_dev(grp, NULL, iommu_group_devices_cb)) {
+		struct iommu_table_group *table_group = iommu_group_get_iommudata(grp);
+		struct iommu_table *tbl = table_group->tables[0];
+
+
+		iommu_table_release_pages(tbl);
+		pr_err("___K___ LIOBN %lx weight=%d\n",
+		       tbl->it_index, bitmap_weight(tbl->it_map, tbl->it_size));
+
+		iommu_table_clear(tbl);
+	}
+	iommu_group_put(grp);
 }
 EXPORT_SYMBOL_GPL(iommu_del_device);
 #endif /* CONFIG_IOMMU_API */
