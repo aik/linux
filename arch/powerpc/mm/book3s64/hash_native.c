@@ -267,8 +267,13 @@ static inline void __tlbiel(unsigned long vpn, int psize, int apsize, int ssize)
 		va |= ssize << 8;
 		sllp = get_sllp_encoding(apsize);
 		va |= sllp << 5;
+#if 0
 		asm volatile(ASM_FTR_IFSET("tlbiel %0", "tlbiel %0,0", %1)
 			     : : "r" (va), "i" (CPU_FTR_ARCH_206)
+			     : "memory");
+#endif
+		asm volatile("tlbiel %0"
+			     : : "r" (va)
 			     : "memory");
 		break;
 	default:
@@ -286,8 +291,13 @@ static inline void __tlbiel(unsigned long vpn, int psize, int apsize, int ssize)
 		 */
 		va |= (vpn & 0xfe);
 		va |= 1; /* L */
+#if 0
 		asm volatile(ASM_FTR_IFSET("tlbiel %0", "tlbiel %0,1", %1)
 			     : : "r" (va), "i" (CPU_FTR_ARCH_206)
+			     : "memory");
+#endif
+		asm volatile("tlbiel %0"
+			     : : "r" (va)
 			     : "memory");
 		break;
 	}
