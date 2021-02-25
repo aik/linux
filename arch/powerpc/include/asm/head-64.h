@@ -15,9 +15,6 @@
 .macro define_data_ftsec name
 	.section ".head.data.\name\()","a",@progbits
 .endm
-.macro use_ftsec name
-	.section ".head.text.\name\()","ax",@progbits
-.endm
 
 /*
  * Fixed (location) sections are used by opening fixed sections and emitting
@@ -100,7 +97,7 @@ start_text:
 #define USE_FIXED_SECTION(sname)				\
 	fs_label = start_##sname;				\
 	fs_start = sname##_start;				\
-	use_ftsec sname;
+	define_ftsec sname;
 
 #define USE_TEXT_SECTION()					\
 	fs_label = start_text;					\
