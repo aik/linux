@@ -15,10 +15,10 @@
 .macro define_data_ftsec name
 	.section ".head.data.\name\()","a",@progbits
 .endm
-.macro use_ftsec name
-	.section ".head.text.\name\()"
-.endm
-
+//.macro use_ftsec name
+//	.section ".head.text.\name\()"
+//.endm
+#define use_ftsec define_ftsec
 /*
  * Fixed (location) sections are used by opening fixed sections and emitting
  * fixed section entries into them before closing them. Multiple fixed sections
