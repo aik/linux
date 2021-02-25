@@ -64,7 +64,7 @@
 	.balign IFETCH_ALIGN_BYTES;				\
 	.global name;						\
 	_ASM_NOKPROBE_SYMBOL(name);				\
-	DEFINE_FIXED_SYMBOL(name);				\
+	DEFINE_FIXED_SYMBOL(name, text);			\
 name:
 
 #define TRAMP_REAL_BEGIN(name)					\
@@ -92,18 +92,18 @@ name:
 	ld	reg,PACAKBASE(r13);	/* get high part of &label */	\
 	ori	reg,reg,FIXED_SYMBOL_ABS_ADDR(label)
 
-#define __LOAD_HANDLER(reg, label)					\
+#define __LOAD_HANDLER(reg, label, section)					\
 	ld	reg,PACAKBASE(r13);					\
-	ori	reg,reg,(ABS_ADDR(label))@l
+	ori	reg,reg,(ABS_ADDR(label, section))@l
 
 /*
  * Branches from unrelocated code (e.g., interrupts) to labels outside
  * head-y require >64K offsets.
  */
-#define __LOAD_FAR_HANDLER(reg, label)					\
+#define __LOAD_FAR_HANDLER(reg, label, section)					\
 	ld	reg,PACAKBASE(r13);					\
-	ori	reg,reg,(ABS_ADDR(label))@l;				\
-	addis	reg,reg,(ABS_ADDR(label))@h
+	ori	reg,reg,(ABS_ADDR(label, section))@l;				\
+	addis	reg,reg,(ABS_ADDR(label, section))@h
 
 /*
  * Branch to label using its 0xC000 address. This results in instruction
@@ -113,8 +113,9 @@ name:
  * This could set the 0xc bits for !RELOCATABLE as an immediate, rather than
  * load KBASE for a slight optimisation.
  */
+// only called once
 #define BRANCH_TO_C000(reg, label)					\
-	__LOAD_FAR_HANDLER(reg, label);					\
+	__LOAD_FAR_HANDLER(reg, label, real_trampolines);					\
 	mtctr	reg;							\
 	bctr
 
@@ -458,7 +459,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_CFAR)
  * This switches to virtual mode and sets MSR[RI].
  */
 .macro __GEN_COMMON_ENTRY name
-DEFINE_FIXED_SYMBOL(\name\()_common_real)
+DEFINE_FIXED_SYMBOL(\name\()_common_real, text)
 \name\()_common_real:
 	.if IKVM_REAL
 		KVMTEST \name
@@ -481,7 +482,7 @@ DEFINE_FIXED_SYMBOL(\name\()_common_real)
 	.endif
 
 	.balign IFETCH_ALIGN_BYTES
-DEFINE_FIXED_SYMBOL(\name\()_common_virt)
+DEFINE_FIXED_SYMBOL(\name\()_common_virt, text)
 \name\()_common_virt:
 	.if IKVM_VIRT
 		KVMTEST \name
@@ -495,7 +496,7 @@ DEFINE_FIXED_SYMBOL(\name\()_common_virt)
  * want to run in real mode.
  */
 .macro __GEN_REALMODE_COMMON_ENTRY name
-DEFINE_FIXED_SYMBOL(\name\()_common_real)
+DEFINE_FIXED_SYMBOL(\name\()_common_real, text)
 \name\()_common_real:
 	.if IKVM_REAL
 		KVMTEST \name
@@ -856,12 +857,12 @@ EXC_VIRT_END(system_call_vectored, 0x3000, 0x1000)
 
 #ifdef CONFIG_RELOCATABLE
 TRAMP_VIRT_BEGIN(system_call_vectored_tramp)
-	__LOAD_HANDLER(r10, system_call_vectored_common)
+	__LOAD_HANDLER(r10, system_call_vectored_common, virt_trampolines)
 	mtctr	r10
 	bctr
 
 TRAMP_VIRT_BEGIN(system_call_vectored_sigill_tramp)
-	__LOAD_HANDLER(r10, system_call_vectored_sigill)
+	__LOAD_HANDLER(r10, system_call_vectored_sigill, virt_trampolines)
 	mtctr	r10
 	bctr
 #endif
@@ -1968,14 +1969,14 @@ END_FTR_SECTION_IFSET(CPU_FTR_REAL_LE)
 	HMT_MEDIUM
 
 	.if ! \virt
-	__LOAD_HANDLER(r10, system_call_common_real)
+	__LOAD_HANDLER(r10, system_call_common_real, real_vectors)
 	mtctr	r10
 	bctr
 	.else
 	li	r10,MSR_RI
 	mtmsrd 	r10,1			/* Set RI (EE=0) */
 #ifdef CONFIG_RELOCATABLE
-	__LOAD_HANDLER(r10, system_call_common)
+	__LOAD_HANDLER(r10, system_call_common, virt_vectors)
 	mtctr	r10
 	bctr
 #else
@@ -3094,7 +3095,7 @@ USE_FIXED_SECTION(virt_trampolines)
 	.align	7
 	.globl	__end_interrupts
 __end_interrupts:
-DEFINE_FIXED_SYMBOL(__end_interrupts)
+DEFINE_FIXED_SYMBOL(__end_interrupts, virt_trampolines)
 
 #ifdef CONFIG_PPC_970_NAP
 	/*
