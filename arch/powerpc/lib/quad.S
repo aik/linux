@@ -15,7 +15,7 @@
 
 /* do_lq(unsigned long ea, unsigned long *regs) */
 _GLOBAL(do_lq)
-1:	lq	r6, 0(r3)
+1:	PPC_LQ(6, 3, 0)
 	std	r6, 0(r4)
 	std	r7, 8(r4)
 	li	r3, 0
@@ -26,7 +26,7 @@ _GLOBAL(do_lq)
 
 /* do_stq(unsigned long ea, unsigned long val0, unsigned long val1) */
 _GLOBAL(do_stq)
-1:	stq	r4, 0(r3)
+1:	PPC_STQ(4, 3, 0)
 	li	r3, 0
 	blr
 2:	li	r3, -EFAULT
