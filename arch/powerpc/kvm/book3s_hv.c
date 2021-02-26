@@ -1522,6 +1522,8 @@ static int kvmppc_handle_exit_hv(struct kvm_vcpu *vcpu,
 		int i;
 
 		if (unlikely(vcpu->arch.shregs.msr & MSR_PR)) {
+#if 0
+XXX benchmark guest exits
 			/*
 			 * Guest userspace executed sc 1. This can only be
 			 * reached by the P9 path because the old path
@@ -1543,6 +1545,7 @@ static int kvmppc_handle_exit_hv(struct kvm_vcpu *vcpu,
 				 */
 				kvmppc_core_queue_program(vcpu, SRR1_PROGPRIV);
 			}
+#endif
 			r = RESUME_GUEST;
 			break;
 		}
