@@ -476,9 +476,13 @@ DEFINE_FIXED_SYMBOL(\name\()_common_real, text)
 		.if IHSRR_IF_HVMODE
 		BEGIN_FTR_SECTION
 		bne	masked_Hinterrupt
+		b	4f
 		FTR_SECTION_ELSE
-		bne	masked_interrupt
+		nop
+		nop
 		ALT_FTR_SECTION_END_IFSET(CPU_FTR_HVMODE | CPU_FTR_ARCH_206)
+		bne	masked_interrupt
+4:
 		.elseif IHSRR
 		bne	masked_Hinterrupt
 		.else
