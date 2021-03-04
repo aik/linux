@@ -78,8 +78,22 @@ void switch_mm_irqs_off(struct mm_struct *prev, struct mm_struct *next,
 	 * We must stop all altivec streams before changing the HW
 	 * context
 	 */
+	/*
+	ISA: 4.3.2.1    Obsolete Data Cache Instruc-tions The Data  Stream  Touch  (dst), Data  Stream  Touch  forStore (dstst), and Data Stream Stop (dss) instructions(primary  opcode  31,  extended  opcodes  342,  374,  and822 respectively), which were proposed for addition tothe Power ISA and were implemented by some proces-sors, must be treated as no-ops (rather than as illegalinstructions)
+
+	clang:
+	  CC      arch/powerpc/kernel/cpu_setup_power.o
+/home/aik/p/kernel-llvm/arch/powerpc/mm/mmu_context.c:82:17: error: deprecated [-Werror,-Winline-asm]
+                asm volatile ("dssall");
+                              ^
+<inline asm>:1:2: note: instantiated into assembly here
+        dssall
+        ^
+
+
 	if (cpu_has_feature(CPU_FTR_ALTIVEC))
 		asm volatile ("dssall");
+	*/
 
 	if (new_on_cpu)
 		radix_kvm_prefetch_workaround(next);
