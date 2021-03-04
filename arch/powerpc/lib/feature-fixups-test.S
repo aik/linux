@@ -145,7 +145,6 @@ BEGIN_FTR_SECTION
 FTR_SECTION_ELSE
 2:	or	2,2,2
 	PPC_LCMPI	r3,1
-	beq	3f
 	blt	2b
 	b	3f
 	b	1b
@@ -160,10 +159,10 @@ globl(ftr_fixup_test6_expected)
 1:	or	1,1,1
 2:	or	2,2,2
 	PPC_LCMPI	r3,1
-	beq	3f
 	blt	2b
 	b	3f
 	b	1b
+	nop
 3:	or	1,1,1
 	or	2,2,2
 	or	3,3,3
