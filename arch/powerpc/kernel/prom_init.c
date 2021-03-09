@@ -3220,27 +3220,26 @@ static void unreloc_toc(void)
 {
 }
 #else
-static void __reloc_toc(unsigned long offset, unsigned long nr_entries)
+static void __reloc_toc(unsigned long offset)
 {
-	unsigned long i;
 	unsigned long *toc_entry;
+	unsigned long *toc_start, *toc_end;
 
-	/* Get the start of the TOC by using r2 directly. */
-	asm volatile("addi %0,2,-0x8000" : "=b" (toc_entry));
+	asm("addis %0,2,__prom_init_toc_start@toc@ha\n\t"
+	    "addi %0,%0,__prom_init_toc_start@toc@l" : "=b" (toc_start));
+	asm("addis %0,2,__prom_init_toc_end@toc@ha\n\t"
+	    "addi %0,%0,__prom_init_toc_end@toc@l" : "=b" (toc_end));
 
-	for (i = 0; i < nr_entries; i++) {
-		*toc_entry = *toc_entry + offset;
-		toc_entry++;
+	for (toc_entry = toc_start; toc_entry != toc_end; toc_entry++) {
+		*toc_entry += offset;
 	}
 }
 
 static void reloc_toc(void)
 {
 	unsigned long offset = reloc_offset();
-	unsigned long nr_entries =
-		(__prom_init_toc_end - __prom_init_toc_start) / sizeof(long);
 
-	__reloc_toc(offset, nr_entries);
+	__reloc_toc(offset);
 
 	mb();
 }
@@ -3248,12 +3247,10 @@ static void reloc_toc(void)
 static void unreloc_toc(void)
 {
 	unsigned long offset = reloc_offset();
-	unsigned long nr_entries =
-		(__prom_init_toc_end - __prom_init_toc_start) / sizeof(long);
 
 	mb();
 
-	__reloc_toc(-offset, nr_entries);
+	__reloc_toc(-offset);
 }
 #endif
 #endif

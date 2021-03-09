@@ -900,7 +900,7 @@ _GLOBAL(relative_toc)
 	blr
 
 .balign 8
-p_toc:	.8byte	__toc_start + 0x8000 - 0b
+p_toc:	.8byte	__toc_ptr - 0b
 
 /*
  * This is where the main kernel code starts.

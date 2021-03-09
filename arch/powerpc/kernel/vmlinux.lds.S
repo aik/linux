@@ -326,17 +326,16 @@ SECTIONS
 		__end_opd = .;
 	}
 
-	. = ALIGN(256);
-	.got : AT(ADDR(.got) - LOAD_OFFSET) {
-		__toc_start = .;
+	.got : AT(ADDR(.got) - LOAD_OFFSET) ALIGN(256) {
+		*(.got)
 #ifndef CONFIG_RELOCATABLE
 		__prom_init_toc_start = .;
-		arch/powerpc/kernel/prom_init.o*(.toc .got)
+		arch/powerpc/kernel/prom_init.o*(.toc)
 		__prom_init_toc_end = .;
 #endif
-		*(.got)
 		*(.toc)
 	}
+	__toc_ptr = DEFINED (.TOC.) ? .TOC. : ADDR (.got) + 0x8000;
 #endif
 
 	/* The initial task and kernel stack */
