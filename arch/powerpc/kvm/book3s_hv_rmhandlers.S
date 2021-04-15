@@ -452,10 +452,13 @@ FTR_SECTION_ELSE
 	HMT_LOW
 	ld	r5, HSTATE_KVM_VCORE(r13)
 	cmpdi	r5, 0
+/*	beq	kvm_no_guest
+	HMT_MEDIUM
+	b	kvm_secondary_got_guest */
+ALT_FTR_SECTION_END_IFCLR(CPU_FTR_ARCH_300)
 	beq	kvm_no_guest
 	HMT_MEDIUM
 	b	kvm_secondary_got_guest
-ALT_FTR_SECTION_END_IFCLR(CPU_FTR_ARCH_300)
 
 54:	li	r0, KVM_HWTHREAD_IN_KVM
 	stb	r0, HSTATE_HWTHREAD_STATE(r13)

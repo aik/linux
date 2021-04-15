@@ -75,10 +75,11 @@ _GLOBAL(__copy_tofrom_user_base)
  * set is Power6.
  */
 test_feature = (SELFTEST_CASE == 1)
+	beq	.Ldst_aligned
 BEGIN_FTR_SECTION
 	nop
 FTR_SECTION_ELSE
-	bne	.Ldst_unaligned
+	b	.Ldst_unaligned
 ALT_FTR_SECTION_END(CPU_FTR_UNALIGNED_LD_STD | CPU_FTR_CP_USE_DCBTZ, \
 		    CPU_FTR_UNALIGNED_LD_STD)
 .Ldst_aligned:
