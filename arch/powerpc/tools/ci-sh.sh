@@ -71,8 +71,8 @@ if [[ -n $KBUILD_EXTRA_WARN ]]; then
 fi
 
 cmd+="linuxppc/build:$IMAGE-$(uname -m) "
-cmd+="/linux/container-build.sh $TARGET"
-#cmd+="bash"
+#cmd+="/linux/container-build.sh $TARGET"
+cmd+="bash"
 
 (set -x; $cmd)
 
