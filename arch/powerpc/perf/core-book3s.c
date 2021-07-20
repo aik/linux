@@ -365,7 +365,8 @@ static inline void perf_read_regs(struct pt_regs *regs)
 		use_siar = 0;
 	else if (!user_mode(regs))
 		use_siar = 1;
-	else if (!(ppmu->flags & PPMU_NO_SIPR) && regs_sipr(regs))
+	else if (!(ppmu->flags & PPMU_NO_SIPR) && regs_sipr(regs)
+			&& !is_kernel_addr(mfspr(SPRN_SIAR)))
 		use_siar = 0;
 	else
 		use_siar = 1;
