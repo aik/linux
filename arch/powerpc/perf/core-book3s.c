@@ -340,6 +340,13 @@ static inline void perf_read_regs(struct pt_regs *regs)
 	 * If the PMU doesn't update the SIAR for non marked events use
 	 * pt_regs.
 	 *
+	 * If regs is a kernel interrupt, always use SIAR. Some PMUs have an
+	 * issue with regs_sipr not being in synch with SIAR in interrupt entry
+	 * and return sequences, which can result in regs_sipr being true for
+	 * kernel interrupts and SIAR, which has the effect of causing samples
+	 * to pile up at mtmsrd MSR[EE] 0->1 or pending irq replay around
+	 * interrupt entry/exit.
+	 *
 	 * If the PMU has HV/PR flags then check to see if they
 	 * place the exception in userspace. If so, use pt_regs. In
 	 * continuous sampling mode the SIAR and the PMU exception are
@@ -356,7 +363,10 @@ static inline void perf_read_regs(struct pt_regs *regs)
 		use_siar = 1;
 	else if ((ppmu->flags & PPMU_NO_CONT_SAMPLING))
 		use_siar = 0;
-	else if (!(ppmu->flags & PPMU_NO_SIPR) && regs_sipr(regs))
+	else if (!user_mode(regs))
+		use_siar = 1;
+	else if (!(ppmu->flags & PPMU_NO_SIPR) && regs_sipr(regs)
+			&& !is_kernel_addr(mfspr(SPRN_SIAR)))
 		use_siar = 0;
 	else
 		use_siar = 1;
@@ -2418,8 +2428,24 @@ int register_power_pmu(struct power_pmu *pmu)
 }
 
 #ifdef CONFIG_PPC64
+static bool pmu_override = false;
+static unsigned long pmu_override_val;
+static void do_pmu_override(void *data)
+{
+	ppc_set_pmu_inuse(1);
+	if (pmu_override_val)
+		mtspr(SPRN_MMCR1, pmu_override_val);
+	mtspr(SPRN_MMCR0, mfspr(SPRN_MMCR0) & ~MMCR0_FC);
+}
+
 static int __init init_ppc64_pmu(void)
 {
+	if (cpu_has_feature(CPU_FTR_HVMODE) && pmu_override) {
+		printk(KERN_WARNING "perf: disabling perf due to pmu= command line option.\n");
+		on_each_cpu(do_pmu_override, NULL, 1);
+		return 0;
+	}
+
 	/* run through all the pmu drivers one at a time */
 	if (!init_power5_pmu())
 		return 0;
@@ -2441,4 +2467,23 @@ static int __init init_ppc64_pmu(void)
 		return init_generic_compat_pmu();
 }
 early_initcall(init_ppc64_pmu);
+
+static int __init pmu_setup(char *str)
+{
+	unsigned long val;
+
+	if (!early_cpu_has_feature(CPU_FTR_HVMODE))
+		return 0;
+
+	pmu_override = true;
+
+	if (kstrtoul(str, 0, &val))
+		val = 0;
+
+	pmu_override_val = val;
+
+	return 1;
+}
+__setup("pmu=", pmu_setup);
+
 #endif

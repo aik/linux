@@ -39,10 +39,8 @@
  * should be power of 2.
  */
 #define HPT_ALIGN_PAGES		((1 << 18) >> PAGE_SHIFT) /* 256k */
-/*
- * By default we reserve 5% of memory for hash pagetable allocation.
- */
-static unsigned long kvm_cma_resv_ratio = 5;
+
+static unsigned long kvm_cma_resv_ratio = -1UL;
 
 static struct cma *kvm_cma;
 
@@ -88,6 +86,19 @@ void __init kvm_cma_reserve(void)
 	 */
 	if (!cpu_has_feature(CPU_FTR_HVMODE))
 		return;
+
+	if (kvm_cma_resv_ratio == -1UL) {
+		/*
+		 * By default we reserve 5% of memory for hash pagetable
+		 * allocation if we're running a hash host. A radix host
+		 * can run hash guests, but that's less common so default
+		 * to zero for radix hosts.
+		 */
+		if (radix_enabled())
+			kvm_cma_resv_ratio = 0;
+		else
+			kvm_cma_resv_ratio = 5;
+	}
 
 	selected_size = PAGE_ALIGN(memblock_phys_mem_size() * kvm_cma_resv_ratio / 100);
 	if (selected_size) {
@@ -648,6 +659,8 @@ void kvmppc_guest_entry_inject_int(struct kvm_vcpu *vcpu)
 {
 	int ext;
 	unsigned long lpcr;
+
+	WARN_ON_ONCE(cpu_has_feature(CPU_FTR_ARCH_300));
 
 	/* Insert EXTERNAL bit into LPCR at the MER bit position */
 	ext = (vcpu->arch.pending_exceptions >> BOOK3S_IRQPRIO_EXTERNAL) & 1;

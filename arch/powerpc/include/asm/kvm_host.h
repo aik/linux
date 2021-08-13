@@ -288,7 +288,6 @@ struct kvm_arch {
 	u32 online_vcores;
 	atomic_t hpte_mod_interest;
 	cpumask_t need_tlb_flush;
-	cpumask_t cpu_in_guest;
 	u8 radix;
 	u8 fwnmi_enabled;
 	u8 secure_guest;
@@ -580,6 +579,8 @@ struct kvm_vcpu_arch {
 	ulong cfar;
 	ulong ppr;
 	u32 pspb;
+	u8 load_ebb;
+	u8 load_tm;
 	ulong fscr;
 	ulong shadow_fscr;
 	ulong ebbhr;
@@ -742,7 +743,7 @@ struct kvm_vcpu_arch {
 
 	struct hrtimer dec_timer;
 	u64 dec_jiffies;
-	u64 dec_expires;
+	u64 dec_expires;	/* Relative to guest timebase. */
 	unsigned long pending_exceptions;
 	u8 ceded;
 	u8 prodded;
@@ -810,6 +811,8 @@ struct kvm_vcpu_arch {
 	u32 emul_inst;
 
 	u32 online;
+
+	u64 hfscr_permitted;	/* A mask of permitted HFSCR facilities */
 
 	/* For support of nested guests */
 	struct kvm_nested_guest *nested;
