@@ -1303,7 +1303,7 @@ int kvmppc_handle_vsx_load(struct kvm_vcpu *vcpu,
 		return EMULATE_FAIL;
 
 	while (vcpu->arch.mmio_vsx_copy_nums) {
-		emulated = __kvmppc_handle_load(vcpu, rt, bytes,
+		emulated = __kvmppc_handle_load(vcpu, rt, 8,
 			is_default_endian, mmio_sign_extend);
 
 		if (emulated != EMULATE_DONE)
@@ -1452,7 +1452,7 @@ int kvmppc_handle_vsx_store(struct kvm_vcpu *vcpu,
 			return EMULATE_FAIL;
 
 		emulated = kvmppc_handle_store(vcpu,
-			 val, bytes, is_default_endian);
+			 val, 8, is_default_endian);
 
 		if (emulated != EMULATE_DONE)
 			break;
@@ -1511,7 +1511,7 @@ int kvmppc_handle_vmx_load(struct kvm_vcpu *vcpu,
 		return EMULATE_FAIL;
 
 	while (vcpu->arch.mmio_vmx_copy_nums) {
-		emulated = __kvmppc_handle_load(vcpu, rt, bytes,
+		emulated = __kvmppc_handle_load(vcpu, rt, 8,
 				is_default_endian, 0);
 
 		if (emulated != EMULATE_DONE)
@@ -1632,7 +1632,7 @@ int kvmppc_handle_vmx_store(struct kvm_vcpu *vcpu,
 			return EMULATE_FAIL;
 		}
 
-		emulated = kvmppc_handle_store(vcpu, val, bytes,
+		emulated = kvmppc_handle_store(vcpu, val, 8,
 				is_default_endian);
 		if (emulated != EMULATE_DONE)
 			break;

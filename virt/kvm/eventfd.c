@@ -736,6 +736,11 @@ ioeventfd_write(struct kvm_vcpu *vcpu, struct kvm_io_device *this, gpa_t addr,
 {
 	struct _ioeventfd *p = to_ioeventfd(this);
 
+	static int n;
+	if (n < 10) {
+		dump_stack();
+		++n;
+	}
 	if (!ioeventfd_in_range(p, addr, len, val))
 		return -EOPNOTSUPP;
 
