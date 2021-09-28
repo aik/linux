@@ -181,17 +181,7 @@ int dma_iommu_dma_supported(struct device *dev, u64 mask)
 
 u64 dma_iommu_get_required_mask(struct device *dev)
 {
-	struct iommu_table *tbl = get_iommu_table_base(dev);
-	u64 mask;
-
-	if (!tbl)
-		return 0;
-
-	mask = 1ULL << (fls_long(tbl->it_offset + tbl->it_size) +
-			tbl->it_page_shift - 1);
-	mask += mask - 1;
-
-	return mask;
+	return DMA_BIT_MASK(64);
 }
 
 const struct dma_map_ops dma_iommu_ops = {
