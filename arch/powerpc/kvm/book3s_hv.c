@@ -4725,7 +4725,7 @@ static int kvmppc_vcpu_run_hv(struct kvm_vcpu *vcpu)
 
 	srr_regs_clobbered();
 
-	return r;
+	return (r & RESUME_FLAG_HOST) ? 0 : r;
 }
 
 static void kvmppc_add_seg_page_size(struct kvm_ppc_one_seg_page_size **sps,
