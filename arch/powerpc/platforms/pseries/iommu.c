@@ -1369,7 +1369,6 @@ static bool enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 		win_name = DIRECT64_PROPNAME;
 	}
 
-	len = max(page_shift + 15, len);
 	ret = create_ddw(dev, ddw_avail, &create, page_shift, len);
 	if (ret != 0)
 		goto out_failed;
