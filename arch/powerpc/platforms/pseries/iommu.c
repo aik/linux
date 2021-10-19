@@ -1404,10 +1404,10 @@ static bool enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 			dev_info(&dev->dev, "failed to map DMA window for %pOF: %d\n",
 				 dn, ret);
 
-		/* Make sure to clean DDW if any TCE was set*/
-		clean_dma_window(pdn, win64->value);
 			goto out_del_list;
 		}
+		/* Make sure to clean DDW if any TCE was set*/
+		clean_dma_window(pdn, win64->value);
 	} else {
 		struct iommu_table *newtbl;
 		int i;
