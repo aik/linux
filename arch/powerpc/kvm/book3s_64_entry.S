@@ -379,7 +379,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_DAWR1)
 	 * Switch to host MMU mode (don't have the real host PID but we aren't
 	 * going back to userspace).
 	 */
-	hwsync
+	sync
 	isync
 
 	mtspr	SPRN_PID,r10

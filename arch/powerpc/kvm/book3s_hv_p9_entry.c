@@ -547,7 +547,7 @@ static void switch_mmu_to_guest_radix(struct kvm *kvm, struct kvm_vcpu *vcpu, u6
 	 * start switching, and stores must be drained to avoid not-my-LPAR
 	 * logic (see switch_mmu_to_host).
 	 */
-	asm volatile("hwsync" ::: "memory");
+	asm volatile("sync" ::: "memory");
 	isync();
 	mtspr(SPRN_LPID, lpid);
 	mtspr(SPRN_LPCR, lpcr);
@@ -570,7 +570,7 @@ static void switch_mmu_to_guest_hpt(struct kvm *kvm, struct kvm_vcpu *vcpu, u64 
 	 * even if the host is in HPT mode because speculative accesses would
 	 * not cause RC updates (we are in real mode).
 	 */
-	asm volatile("hwsync" ::: "memory");
+	asm volatile("sync" ::: "memory");
 	isync();
 	mtspr(SPRN_LPID, lpid);
 	mtspr(SPRN_LPCR, lpcr);
@@ -591,7 +591,7 @@ static void switch_mmu_to_host(struct kvm *kvm, u32 pid)
 	 * mtLPIDR / mtPIDR switch, in order to ensure all stores are drained,
 	 * so the not-my-LPAR tlbie logic does not overlook them.
 	 */
-	asm volatile("hwsync" ::: "memory");
+	asm volatile("sync" ::: "memory");
 	isync();
 	mtspr(SPRN_PID, pid);
 	mtspr(SPRN_LPID, kvm->arch.host_lpid);
