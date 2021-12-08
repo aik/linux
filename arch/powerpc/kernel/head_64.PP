@@ -3765,18 +3765,17 @@ p_end: .8byte _end - copy_to_here
 
 
  addis %r8,%r26,((p_end - start_text + text_start))@ha
- addi %r8,%r8,((p_end - start_text + text_start))@l
- ld %r8,0(%r8)
+ ld %r8,((p_end - start_text + text_start))@l(%r8)
  add %r5,%r5,%r8
 5: bl copy_and_flush
 
 9: b start_here_multiplatform
-# 688 "/home/aik/p/kernels-llvm/llvm/arch/powerpc/kernel/head_64.S"
+# 687 "/home/aik/p/kernels-llvm/llvm/arch/powerpc/kernel/head_64.S"
 .align 2 ; .type copy_and_flush,@function; .globl copy_and_flush; copy_and_flush:
  addi %r5,%r5,-8
  addi %r6,%r6,-8
 4: li %r0,8
-# 700 "/home/aik/p/kernels-llvm/llvm/arch/powerpc/kernel/head_64.S"
+# 699 "/home/aik/p/kernels-llvm/llvm/arch/powerpc/kernel/head_64.S"
  mtctr %r0
 3: addi %r6,%r6,8
  ldx %r0,%r6,%r4
@@ -3797,7 +3796,7 @@ p_end: .8byte _end - copy_to_here
 
 .align 8
 copy_to_here:
-# 803 "/home/aik/p/kernels-llvm/llvm/arch/powerpc/kernel/head_64.S"
+# 802 "/home/aik/p/kernels-llvm/llvm/arch/powerpc/kernel/head_64.S"
  .section ".text";
  .align 2 ;
 
@@ -3880,7 +3879,7 @@ enable_64b_mode:
  isync
 
  blr
-# 898 "/home/aik/p/kernels-llvm/llvm/arch/powerpc/kernel/head_64.S"
+# 897 "/home/aik/p/kernels-llvm/llvm/arch/powerpc/kernel/head_64.S"
 .align 2 ; .type relative_toc,@function; .globl relative_toc; relative_toc:
  mflr %r0
  bcl 20,31,$+4
@@ -3919,7 +3918,7 @@ start_here_multiplatform:
 3: stdu %r0,8(%r8)
  bdnz 3b
 4:
-# 945 "/home/aik/p/kernels-llvm/llvm/arch/powerpc/kernel/head_64.S"
+# 944 "/home/aik/p/kernels-llvm/llvm/arch/powerpc/kernel/head_64.S"
  mfmsr %r6
  ori %r6,%r6,(1<<(1))
  mtmsrd %r6
@@ -3979,5 +3978,5 @@ start_here_common:
 
 
 0: trap
- EMIT_BUG_ENTRY 0b, "arch/powerpc/kernel/head_64.S", 1004, 0
+ EMIT_BUG_ENTRY 0b, "arch/powerpc/kernel/head_64.S", 1003, 0
  .previous

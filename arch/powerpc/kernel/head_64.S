@@ -670,8 +670,7 @@ p_end: .8byte _end - copy_to_here
 	 * _end - copy_to_here to the copy limit and run again.
 	 */
 	addis   r8,r26,(ABS_ADDR(p_end, text))@ha
-	addi	r8,r8,(ABS_ADDR(p_end, text))@l
-	ld      r8,0(r8)
+	ld      r8,(ABS_ADDR(p_end, text))@l(r8)
 	add	r5,r5,r8
 5:	bl	copy_and_flush		/* copy the rest */
 
