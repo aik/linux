@@ -38,6 +38,8 @@ typedef uint64_t vm_vaddr_t; /* Virtual Machine (Guest) virtual address */
 #define DEFAULT_GUEST_STACK_VADDR_MIN	0xab6000
 #define DEFAULT_STACK_PGS		5
 
+#define KVM_UTIL_MIN_MMIO_VADDR		0xC0000000
+
 enum vm_guest_mode {
 	VM_MODE_P52V48_4K,
 	VM_MODE_P52V48_64K,
@@ -284,6 +286,8 @@ vm_paddr_t vm_phy_page_alloc(struct kvm_vm *vm, vm_paddr_t paddr_min,
 vm_paddr_t vm_phy_pages_alloc(struct kvm_vm *vm, size_t num,
 			      vm_paddr_t paddr_min, uint32_t memslot);
 vm_paddr_t vm_alloc_page_table(struct kvm_vm *vm);
+vm_vaddr_t vm_vaddr_unused_gap(struct kvm_vm *vm, size_t sz,
+			       vm_vaddr_t vaddr_min);
 
 /*
  * Create a VM with reasonable defaults
