@@ -8,6 +8,9 @@
 #define PPC_BIT(x) (1ULL << (63 - x))
 
 #define MSR_SF  PPC_BIT(0)
+#define MSR_VEC	PPC_BIT(38)
+#define MSR_VSX	PPC_BIT(40)
+#define MSR_FP	PPC_BIT(50)
 #define MSR_IR  PPC_BIT(58)
 #define MSR_DR  PPC_BIT(59)
 #define MSR_LE  PPC_BIT(63)

@@ -201,6 +201,7 @@ void vm_vcpu_add_default(struct kvm_vm *vm, uint32_t vcpuid, void *guest_code)
 
 	regs.msr = MSR_SF | MSR_LE;
 	regs.msr |= MSR_IR | MSR_DR;
+	regs.msr |= MSR_VSX | MSR_VEC | MSR_FP;
 	regs.pc = (unsigned long) guest_code;
 	regs.pid = 0;
 	regs.gpr[1] = stack_vaddr + stack_sz - MIN_FRAME_SZ;
