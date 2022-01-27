@@ -2268,6 +2268,49 @@ static void __init prom_find_mmu(void)
 #define prom_find_mmu()
 #endif
 
+#if 0
+struct entry {
+        int line;
+        const char *file;
+} __attribute__((packed));
+
+static const struct entry e1 = { .file = __FILE__, .line = __LINE__ };
+static const struct entry e2 = { .file = __FILE__, .line = __LINE__ };
+
+//int main(void)
+//{
+//        printf("%s:%d\n", e1.file, e1.line);
+//        printf("%s:%d\n", e2.file, e2.line);
+//}
+#endif
+
+#if 1
+#pragma GCC push_options
+#pragma GCC optimize ("O0")
+struct entry {
+        const char *file;
+        int line;
+} __attribute__((packed));
+
+//int main(void)
+//{
+//        printf("%s:%d\n", e1.file, e1.line);
+//        printf("%s:%d\n", e2.file, e2.line);
+//}
+static const struct entry e1 = { .file = __FILE__, .line = __LINE__ };
+static const struct entry e2 = { .file = __FILE__, .line = __LINE__ };
+
+void __init aikdbg(void)
+{
+	prom_printf("e1=%s %lx %lx\n", e1.file, (unsigned long) e1.file, mfmsr());
+	prom_printf("e2=%s %lx\n", e2.file, (unsigned long) e2.file);
+}
+
+#pragma GCC pop_options
+#else
+static void aikdbg(void){}
+#endif
+
 static void __init prom_init_stdout(void)
 {
 	char *path = of_stdout_device;
@@ -2283,7 +2326,8 @@ static void __init prom_init_stdout(void)
 	/* Get the full OF pathname of the stdout device */
 	memset(path, 0, 256);
 	call_prom("instance-to-path", 3, 1, prom.stdout, path, 255);
-	prom_printf("OF stdout device is: %s\n", of_stdout_device);
+	aikdbg();
+	prom_printf("OF stdout device is: %s msr=%lx\n", of_stdout_device, mfmsr());
 	prom_setprop(prom.chosen, "/chosen", "linux,stdout-path",
 		     path, prom_strlen(path) + 1);
 

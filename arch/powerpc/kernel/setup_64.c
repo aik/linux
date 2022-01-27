@@ -325,8 +325,36 @@ static void __init record_spr_defaults(void)
  * device-tree is not accessible via normal means at this point.
  */
 
+#if 0
+#pragma GCC push_options
+#pragma GCC optimize ("O0")
+struct entry {
+        const char *file;
+        int line;
+} __attribute__((packed));
+
+//int main(void)
+//{
+//        printf("%s:%d\n", e1.file, e1.line);
+//        printf("%s:%d\n", e2.file, e2.line);
+//}
+static const struct entry e1 = { .file = __FILE__, .line = __LINE__ };
+static const struct entry e2 = { .file = __FILE__, .line = __LINE__ };
+
+static void aikdbg(void)
+{
+	printk("e1=%s %lx\n", e1.file, (unsigned long) e1.file);
+	printk("e2=%s %lx\n", e2.file, (unsigned long) e2.file);
+}
+
+#pragma GCC pop_options
+#else
+static void aikdbg(void){}
+#endif
+
 void __init early_setup(unsigned long dt_ptr)
 {
+
 	static __initdata struct paca_struct boot_paca;
 
 	/* -------- printk is _NOT_ safe to use here ! ------- */
@@ -436,6 +464,7 @@ void __init early_setup(unsigned long dt_ptr)
 	 */
 	btext_map();
 #endif /* CONFIG_PPC_EARLY_DEBUG_BOOTX */
+	aikdbg();
 }
 
 #ifdef CONFIG_SMP
