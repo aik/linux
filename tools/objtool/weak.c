@@ -29,3 +29,8 @@ int __weak orc_create(struct objtool_file *file)
 {
 	UNSUPPORTED("orc");
 }
+
+int __weak objtool_mcount(struct objtool_file *file)
+{
+	UNSUPPORTED("mcount subcommand");
+}

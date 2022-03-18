@@ -851,7 +851,9 @@ ifdef CONFIG_FTRACE_MCOUNT_USE_CC
   endif
 endif
 ifdef CONFIG_FTRACE_MCOUNT_USE_OBJTOOL
+ ifdef CONFIG_HAVE_NOP_MCOUNT
   CC_FLAGS_USING	+= -DCC_USING_NOP_MCOUNT
+ endif
 endif
 ifdef CONFIG_FTRACE_MCOUNT_USE_RECORDMCOUNT
   ifdef CONFIG_HAVE_C_RECORDMCOUNT
@@ -1303,6 +1305,10 @@ install: sub_make_done :=
 # Tools
 
 ifdef CONFIG_STACK_VALIDATION
+prepare: tools/objtool
+endif
+
+ifdef CONFIG_FTRACE_MCOUNT_USE_OBJTOOL
 prepare: tools/objtool
 endif
 
