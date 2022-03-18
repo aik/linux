@@ -179,11 +179,29 @@ int create_mcount_loc_sections(struct objtool_file *file)
 		loc = (unsigned long *)sec->data->d_buf + idx;
 		memset(loc, 0, sizeof(unsigned long));
 
-		if (elf_add_reloc_to_insn(file->elf, sec,
-					  idx * sizeof(unsigned long),
-					  R_X86_64_64,
-					  insn->sec, insn->offset))
-			return -1;
+		if (file->elf->ehdr.e_machine == EM_X86_64) {
+			if (elf_add_reloc_to_insn(file->elf, sec,
+						  idx * sizeof(unsigned long),
+						  R_X86_64_64,
+						  insn->sec, insn->offset))
+				return -1;
+		}
+
+		if (file->elf->ehdr.e_machine == EM_PPC64) {
+			if (elf_add_reloc_to_insn(file->elf, sec,
+						  idx * sizeof(unsigned long),
+						  R_PPC64_ADDR64,
+						  insn->sec, insn->offset))
+				return -1;
+		}
+
+		if (file->elf->ehdr.e_machine == EM_PPC) {
+			if (elf_add_reloc_to_insn(file->elf, sec,
+						  idx * sizeof(unsigned long),
+						  R_PPC_ADDR32,
+						  insn->sec, insn->offset))
+				return -1;
+		}
 
 		idx++;
 	}

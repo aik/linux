@@ -49,6 +49,10 @@ ifeq ($(SRCARCH),x86)
 	SUBCMD_MCOUNT := y
 endif
 
+ifeq ($(SRCARCH),powerpc)
+        SUBCMD_MCOUNT := y
+endif
+
 export SUBCMD_CHECK SUBCMD_ORC SUBCMD_MCOUNT
 export srctree OUTPUT CFLAGS SRCARCH AWK
 include $(srctree)/tools/build/Makefile.include

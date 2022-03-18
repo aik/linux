@@ -1,0 +1,1 @@
+objtool-y += decode.o
