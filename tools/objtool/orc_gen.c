@@ -10,6 +10,7 @@
 #include <asm/orc_types.h>
 
 #include <objtool/check.h>
+#include <objtool/utils.h>
 #include <objtool/warn.h>
 #include <objtool/endianness.h>
 

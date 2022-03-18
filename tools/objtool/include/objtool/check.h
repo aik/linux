@@ -86,8 +86,6 @@ static inline bool is_jump(struct instruction *insn)
 	return is_static_jump(insn) || is_dynamic_jump(insn);
 }
 
-struct instruction *find_insn(struct objtool_file *file,
-			      struct section *sec, unsigned long offset);
 
 #define for_each_insn(file, insn)					\
 	list_for_each_entry(insn, &file->insn_list, list)

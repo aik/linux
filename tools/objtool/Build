@@ -12,6 +12,7 @@ objtool-y += builtin-check.o
 objtool-y += builtin-orc.o
 objtool-y += elf.o
 objtool-y += objtool.o
+objtool-y += utils.o
 
 objtool-y += libstring.o
 objtool-y += libctype.o
