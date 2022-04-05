@@ -3246,3 +3246,17 @@ void __init pnv_pci_init_ioda_hub(struct device_node *np)
 			pnv_pci_init_ioda_phb(phbn, hub_id, PNV_PHB_IODA1);
 	}
 }
+
+void _realprintk(const char *fmt, ...)
+{
+	char buf[256];
+	va_list args;
+
+	va_start(args, fmt);
+	vsnprintf(buf, sizeof(buf) - 1, fmt, args);
+	va_end(args);
+	buf[sizeof(buf) - 1] = 0;
+
+	opal_pr_log(buf);
+}
+EXPORT_SYMBOL_GPL(_realprintk);

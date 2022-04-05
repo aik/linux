@@ -139,6 +139,7 @@ int64_t opal_pci_map_pe_dma_window(uint64_t phb_id, uint16_t pe_number, uint16_t
 int64_t opal_pci_map_pe_dma_window_real(uint64_t phb_id, uint16_t pe_number,
 					uint16_t dma_window_number, uint64_t pci_start_addr,
 					uint64_t pci_mem_size);
+int64_t opal_pr_log(const char *s);
 int64_t opal_pci_reset(uint64_t id, uint8_t reset_scope, uint8_t assert_state);
 
 int64_t opal_pci_get_hub_diag_data(uint64_t hub_id, void *diag_buffer,
@@ -396,6 +397,8 @@ void opal_wake_poller(void);
 void opal_powercap_init(void);
 void opal_psr_init(void);
 void opal_sensor_groups_init(void);
+
+void _realprintk(const char *fmt, ...);
 
 #endif /* __ASSEMBLY__ */
 
