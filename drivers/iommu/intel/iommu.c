@@ -4599,6 +4599,10 @@ static struct iommu_device *intel_iommu_probe_device(struct device *dev)
 	unsigned long flags;
 	u8 bus, devfn;
 
+	/* ANDD platform device support needs fixing */
+	if (!pdev)
+		return ERR_PTR(-ENODEV);
+
 	iommu = device_to_iommu(dev, &bus, &devfn);
 	if (!iommu)
 		return ERR_PTR(-ENODEV);
