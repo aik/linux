@@ -30,6 +30,48 @@
 #define DRIVER_AUTHOR   "aik@ozlabs.ru"
 #define DRIVER_DESC     "VFIO IOMMU SPAPR TCE"
 
+static void dump_table(struct iommu_table *tbl, __be64 *tces, int lvl, int ind, unsigned long off)
+{
+	unsigned long i, j;
+	unsigned lvlshift = ilog2(tbl->it_level_size);
+	char ss[64];
+
+	printk("VL%d %lx: %lx\n", ind, (unsigned long) tces, off);
+	for (i = 0; i < tbl->it_level_size; ++i) {
+		unsigned long tce = be64_to_cpu(tces[i]);
+		unsigned long localoff = i << (tbl->it_page_shift + lvl * lvlshift);
+
+		if (!(tce & (TCE_PCI_READ | TCE_PCI_WRITE))) {
+			if (tce)
+				printk("%lx: %lx --- ERROR\n", off + localoff + (tbl->it_offset << tbl->it_page_shift), tce);
+			continue;
+		}
+
+		sprintf(ss, "%lx: ", off + localoff + (tbl->it_offset << tbl->it_page_shift));
+		for (j = 0; j < ind; ++j)
+			sprintf(ss + strlen(ss), "\t");
+		sprintf(ss + strlen(ss), "%lx", tce);
+//		printk("%s\n", ss);
+
+		if ((i < 5) || (tce >> 48) || (tce == (TCE_PCI_READ | TCE_PCI_WRITE)))
+			printk("%s\n", ss);
+
+		if (lvl)
+			dump_table(tbl, __va(tce & ~(TCE_PCI_READ | TCE_PCI_WRITE)), lvl - 1, ind + 1,
+				   off + localoff);
+
+		cond_resched();
+	}
+
+#if 0
+	for (i = 0; i < tbl->it_level_size; ++i) {
+		if (tces[tbl->it_level_size + i] != 0xa5a5a5a5a5a5a5a5UL) {
+			pr_err("GP %lx: %llx", i, tces[tbl->it_level_size + i]);
+		}
+	}
+#endif
+}
+
 static void tce_iommu_detach_group(void *iommu_data,
 		struct iommu_group *iommu_group);
 
@@ -363,6 +405,10 @@ static void tce_iommu_release(void *iommu_data)
 		if (!tbl)
 			continue;
 
+		pr_err("___K___ (%u) %s %u: lvlv=%ld lsize=%ld sz=%lx base=%lx\n", smp_processor_id(), __func__, __LINE__,
+		       tbl->it_indirect_levels, tbl->it_level_size, tbl->it_size, tbl->it_base);
+		dump_table(tbl, (__be64 *)tbl->it_base, tbl->it_indirect_levels, 0, 0);
+
 		tce_iommu_clear(container, tbl, tbl->it_offset, tbl->it_size);
 		tce_iommu_free_table(container, tbl);
 	}
@@ -677,6 +723,7 @@ static long tce_iommu_create_window(struct tce_container *container,
 
 	BUG_ON(!tbl->it_ops->free);
 
+	tbl->it_index = 0xCC00 | num;
 	/*
 	 * Program the table to every group.
 	 * Groups have been tested for compatibility at the attach time.
@@ -736,6 +783,10 @@ static long tce_iommu_remove_window(struct tce_container *container,
 
 		table_group->ops->unset_window(table_group, num);
 	}
+
+	pr_err("___K___ (%u) %s %u: lvlv=%ld lsize=%ld sz=%lx base=%lx\n", smp_processor_id(), __func__, __LINE__,
+	       tbl->it_indirect_levels, tbl->it_level_size, tbl->it_size, tbl->it_base);
+	dump_table(tbl, (__be64 *)tbl->it_base, tbl->it_indirect_levels, 0, 0);
 
 	/* Free table */
 	tce_iommu_clear(container, tbl, tbl->it_offset, tbl->it_size);
