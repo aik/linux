@@ -2912,6 +2912,25 @@ static void pnv_pci_ioda_dma_bus_setup(struct pci_bus *bus)
 	}
 }
 
+static struct iommu_group *pnv_pci_device_group(struct pci_controller *hose,
+						struct pci_dev *pdev)
+{
+	struct pnv_phb *phb = hose->private_data;
+	struct pnv_ioda_pe *pe;
+
+	if (WARN_ON(!phb))
+		return ERR_PTR(-ENODEV);
+
+	pe = pnv_pci_bdfn_to_pe(phb, pdev->devfn | (pdev->bus->number << 8));
+	if (!pe)
+		return ERR_PTR(-ENODEV);
+
+	if (!pe->table_group.group)
+		return ERR_PTR(-ENODEV);
+
+	return pe->table_group.group;
+}
+
 static const struct pci_controller_ops pnv_pci_ioda_controller_ops = {
 	.dma_dev_setup		= pnv_pci_ioda_dma_dev_setup,
 	.dma_bus_setup		= pnv_pci_ioda_dma_bus_setup,
@@ -2922,6 +2941,7 @@ static const struct pci_controller_ops pnv_pci_ioda_controller_ops = {
 	.setup_bridge		= pnv_pci_fixup_bridge_resources,
 	.reset_secondary_bus	= pnv_pci_reset_secondary_bus,
 	.shutdown		= pnv_pci_ioda_shutdown,
+	.device_group		= pnv_pci_device_group,
 };
 
 static const struct pci_controller_ops pnv_npu_ocapi_ioda_controller_ops = {
@@ -2930,6 +2950,20 @@ static const struct pci_controller_ops pnv_npu_ocapi_ioda_controller_ops = {
 	.window_alignment	= pnv_pci_window_alignment,
 	.reset_secondary_bus	= pnv_pci_reset_secondary_bus,
 	.shutdown		= pnv_pci_ioda_shutdown,
+};
+
+static struct attribute *spapr_tce_iommu_attrs[] = {
+	NULL,
+};
+
+static struct attribute_group spapr_tce_iommu_group = {
+	.name = "spapr-tce-iommu",
+	.attrs = spapr_tce_iommu_attrs,
+};
+
+static const struct attribute_group *spapr_tce_iommu_groups[] = {
+	&spapr_tce_iommu_group,
+	NULL,
 };
 
 static void __init pnv_pci_init_ioda_phb(struct device_node *np,
@@ -3199,6 +3233,12 @@ static void __init pnv_pci_init_ioda_phb(struct device_node *np,
 
 	/* create pci_dn's for DT nodes under this PHB */
 	pci_devs_phb_init_dynamic(hose);
+
+	iommu_device_sysfs_add(&hose->iommu, hose->parent,
+			       spapr_tce_iommu_groups, "iommu%lld", phb_id);
+	rc = iommu_device_register(&hose->iommu, &spapr_tce_iommu_ops, hose->parent);
+	if (rc)
+		pr_warn("iommu_device_register returned %ld\n", rc);
 }
 
 void __init pnv_pci_init_ioda2_phb(struct device_node *np)
