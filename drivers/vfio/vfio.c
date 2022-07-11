@@ -605,7 +605,8 @@ int vfio_register_group_dev(struct vfio_device *device)
 	 * VFIO always sets IOMMU_CACHE because we offer no way for userspace to
 	 * restore cache coherency.
 	 */
-	if (!iommu_capable(device->dev->bus, IOMMU_CAP_CACHE_COHERENCY))
+	if (!IS_ENABLED(CONFIG_VFIO_IOMMU_SPAPR_TCE) &&
+	    !iommu_capable(device->dev->bus, IOMMU_CAP_CACHE_COHERENCY))
 		return -EINVAL;
 
 	return __vfio_register_dev(device,
@@ -934,9 +935,6 @@ static void __vfio_group_unset_container(struct vfio_group *group)
 		driver->ops->detach_group(container->iommu_data,
 					  group->iommu_group);
 
-	if (group->type == VFIO_IOMMU)
-		iommu_group_release_dma_owner(group->iommu_group);
-
 	group->container = NULL;
 	group->container_users = 0;
 	list_del(&group->container_next);
@@ -1009,21 +1007,12 @@ static int vfio_group_set_container(struct vfio_group *group, int container_fd)
 		goto unlock_out;
 	}
 
-	if (group->type == VFIO_IOMMU) {
-		ret = iommu_group_claim_dma_owner(group->iommu_group, f.file);
-		if (ret)
-			goto unlock_out;
-	}
-
 	driver = container->iommu_driver;
 	if (driver) {
 		ret = driver->ops->attach_group(container->iommu_data,
 						group->iommu_group,
 						group->type);
 		if (ret) {
-			if (group->type == VFIO_IOMMU)
-				iommu_group_release_dma_owner(
-					group->iommu_group);
 			goto unlock_out;
 		}
 	}

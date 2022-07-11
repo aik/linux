@@ -2169,14 +2169,20 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 
 	mutex_lock(&iommu->lock);
 
+	if (type == VFIO_IOMMU) {
+		ret = iommu_group_claim_dma_owner(group->iommu_group, iommu_data);
+		if (ret)
+			goto out_unlock;
+	}
+
 	/* Check for duplicates */
 	if (vfio_iommu_find_iommu_group(iommu, iommu_group))
-		goto out_unlock;
+		goto out_release_owner;
 
 	ret = -ENOMEM;
 	group = kzalloc(sizeof(*group), GFP_KERNEL);
 	if (!group)
-		goto out_unlock;
+		goto out_release_owner;
 	group->iommu_group = iommu_group;
 
 	if (type == VFIO_EMULATED_IOMMU) {
@@ -2189,7 +2195,7 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 		 */
 		group->pinned_page_dirty_scope = true;
 		ret = 0;
-		goto out_unlock;
+		goto out_release_owner;
 	}
 
 	/* Determine bus_type in order to allocate a domain */
@@ -2344,6 +2350,9 @@ out_free_domain:
 	kfree(domain);
 out_free_group:
 	kfree(group);
+out_release_owner:
+	if (type == VFIO_IOMMU)
+		iommu_group_release_dma_owner(group->iommu_group);
 out_unlock:
 	mutex_unlock(&iommu->lock);
 	return ret;
@@ -2540,6 +2549,10 @@ detach_group_done:
 		if (iommu->dirty_page_tracking)
 			vfio_iommu_populate_bitmap_full(iommu);
 	}
+
+	if (iommu_group_dma_owner_claimed(group->iommu_group))
+		iommu_group_release_dma_owner(group->iommu_group);
+
 	mutex_unlock(&iommu->lock);
 }
 
