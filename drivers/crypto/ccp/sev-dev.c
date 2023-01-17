@@ -114,7 +114,7 @@ static struct sev_data_range_list *snp_range_list;
 struct sev_asid_data *sev_asid_data;
 u32 nr_asids, sev_min_asid, sev_max_asid, sev_es_max_asid;
 
-static inline bool sev_version_greater_or_equal(u8 maj, u8 min)
+bool sev_version_greater_or_equal(u8 maj, u8 min)
 {
 	struct sev_device *sev = psp_master->sev_data;
 
@@ -371,7 +371,7 @@ static int sev_write_init_ex_file_if_required(int cmd_id)
  */
 static int __sev_do_cmd_locked(int cmd, void *data, int *psp_ret);
 
-static int snp_reclaim_pages(unsigned long paddr, unsigned int npages, bool locked)
+int snp_reclaim_pages(unsigned long paddr, unsigned int npages, bool locked)
 {
 	int ret, err, i;
 

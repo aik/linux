@@ -73,6 +73,7 @@ struct sev_device {
 #endif /* CONFIG_FW_UPLOAD */
 };
 
+bool sev_version_greater_or_equal(u8 maj, u8 min);
 int sev_dev_init(struct psp_device *psp);
 void sev_dev_destroy(struct psp_device *psp);
 
