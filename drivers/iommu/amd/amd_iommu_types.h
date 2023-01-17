@@ -593,6 +593,8 @@ struct protection_domain {
 
 	struct mmu_notifier mn;	/* mmu notifier for the SVA domain */
 	struct list_head dev_data_list; /* List of pdom_dev_data */
+
+	struct amd_viommu *aviommu;
 };
 
 /*

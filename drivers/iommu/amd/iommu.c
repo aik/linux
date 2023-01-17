@@ -30,6 +30,7 @@
 #include <linux/percpu.h>
 #include <linux/io-pgtable.h>
 #include <linux/cc_platform.h>
+#include <linux/iommufd.h>
 #include <asm/irq_remapping.h>
 #include <asm/io_apic.h>
 #include <asm/apic.h>
@@ -2068,7 +2069,18 @@ static void set_dte_entry(struct amd_iommu *iommu,
 		new.data[1] |= DTE_FLAG_IOTLB;
 
 	old_domid = READ_ONCE(dte->data[1]) & DEV_DOMID_MASK;
-	new.data[1] |= domid;
+
+	if (domain->aviommu) {
+		/*
+		 * This runs when VFIO is bound to a device but TDI is not yet.
+		 * Ideally TSM should change DTE only when TDI is bound.
+		 */
+		dev_info(dev_data->dev, "Skip DomainID=%x and set bit96\n", domid);
+		new.data[1] |= 1ULL << (96 - 64);
+	} else {
+		dev_info(dev_data->dev, "Not skip DomainID=%x and not set bit96\n", domid);
+		new.data[1] |= domid;
+	}
 
 	/*
 	 * Restore cached persistent DTE bits, which can be set by information
@@ -2549,12 +2561,15 @@ amd_iommu_domain_alloc_paging_flags(struct device *dev, u32 flags,
 {
 	struct amd_iommu *iommu = get_amd_iommu_from_dev(dev);
 	const u32 supported_flags = IOMMU_HWPT_ALLOC_DIRTY_TRACKING |
+						IOMMU_HWPT_ALLOC_PASID |
+						IOMMU_HWPT_ALLOC_NEST_PARENT;
+	const u32 supported_flags2 = IOMMU_HWPT_ALLOC_DIRTY_TRACKING |
 						IOMMU_HWPT_ALLOC_PASID;
 
 	if ((flags & ~supported_flags) || user_data)
 		return ERR_PTR(-EOPNOTSUPP);
 
-	switch (flags & supported_flags) {
+	switch (flags & supported_flags2) {
 	case IOMMU_HWPT_ALLOC_DIRTY_TRACKING:
 		/* Allocate domain with v1 page table for dirty tracking */
 		if (!amd_iommu_hd_support(iommu))
@@ -3015,6 +3030,46 @@ static int amd_iommu_dev_disable_feature(struct device *dev,
 	return ret;
 }
 
+struct amd_viommu {
+	struct iommufd_viommu core;
+	struct protection_domain *domain;
+};
+
+static void amd_viommu_destroy(struct iommufd_viommu *viommu)
+{
+	struct amd_viommu *aviommu = container_of(viommu, struct amd_viommu, core);
+
+	if (!aviommu->domain)
+		return;
+	aviommu->domain->aviommu = NULL;
+}
+
+
+static const struct iommufd_viommu_ops amd_viommu_ops = {
+	.destroy = amd_viommu_destroy,
+};
+
+static struct iommufd_viommu *amd_viommu_alloc(struct device *dev,
+					       struct iommu_domain *parent,
+					       struct iommufd_ctx *ictx,
+					       unsigned int viommu_type)
+{
+	struct amd_viommu *aviommu;
+	struct protection_domain *domain = to_pdomain(parent);
+
+	if (viommu_type != IOMMU_VIOMMU_TYPE_TSM)
+		return ERR_PTR(-EOPNOTSUPP);
+
+	aviommu = iommufd_viommu_alloc(ictx, struct amd_viommu, core, &amd_viommu_ops);
+	if (IS_ERR(aviommu))
+		return ERR_CAST(aviommu);
+
+	aviommu->domain = domain;
+	domain->aviommu = aviommu;
+
+	return &aviommu->core;
+}
+
 const struct iommu_ops amd_iommu_ops = {
 	.capable = amd_iommu_capable,
 	.blocked_domain = &blocked_domain,
@@ -3031,6 +3086,7 @@ const struct iommu_ops amd_iommu_ops = {
 	.dev_enable_feat = amd_iommu_dev_enable_feature,
 	.dev_disable_feat = amd_iommu_dev_disable_feature,
 	.page_response = amd_iommu_page_response,
+	.viommu_alloc = amd_viommu_alloc,
 	.default_domain_ops = &(const struct iommu_domain_ops) {
 		.attach_dev	= amd_iommu_attach_device,
 		.map_pages	= amd_iommu_map_pages,
