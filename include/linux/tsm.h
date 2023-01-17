@@ -5,6 +5,11 @@
 #include <linux/sizes.h>
 #include <linux/types.h>
 #include <linux/uuid.h>
+#include <linux/device.h>
+#include <linux/slab.h>
+#include <linux/mutex.h>
+#include <linux/device.h>
+#include <linux/bitfield.h>
 
 #define TSM_REPORT_INBLOB_MAX 64
 #define TSM_REPORT_OUTBLOB_MAX SZ_32K
@@ -109,4 +114,294 @@ struct tsm_report_ops {
 
 int tsm_report_register(const struct tsm_report_ops *ops, void *priv);
 int tsm_report_unregister(const struct tsm_report_ops *ops);
+
+/* SPDM control structure for DOE */
+struct tsm_spdm {
+	unsigned long req_len;
+	void *req;
+	unsigned long rsp_len;
+	void *rsp;
+};
+
+/* Data object for measurements/certificates/attestationreport */
+struct tsm_blob {
+	void *data;
+	size_t len;
+};
+
+struct tsm_blob *tsm_blob_new(void *data, size_t len);
+static inline void tsm_blob_free(struct tsm_blob *b)
+{
+	kfree(b);
+}
+
+/**
+ * struct tdisp_interface_id - TDISP INTERFACE_ID Definition
+ *
+ * @function_id: Identifies the function of the device hosting the TDI
+ *   15:0: @rid: Requester ID
+ *   23:16: @rseg: Requester Segment (Reserved if Requester Segment Valid is Clear)
+ *   24: @rseg_valid: Requester Segment Valid
+ *   31:25 – Reserved
+ * 8B - Reserved
+ */
+struct tdisp_interface_id {
+	u32 function_id; /* TSM_TDISP_IID_xxxx */
+	u8 reserved[8];
+} __packed;
+
+#define TSM_TDISP_IID_REQUESTER_ID	GENMASK(15, 0)
+#define TSM_TDISP_IID_RSEG		GENMASK(23, 16)
+#define TSM_TDISP_IID_RSEG_VALID	BIT(24)
+
+/*
+ * Measurement block as defined in SPDM DSP0274.
+ */
+struct spdm_measurement_block_header {
+	u8 index;
+	u8 spec; /* MeasurementSpecification */
+	u16 size;
+} __packed;
+
+struct dmtf_measurement_block_header {
+	u8 type;  /* DMTFSpecMeasurementValueType */
+	u16 size; /* DMTFSpecMeasurementValueSize */
+} __packed;
+
+struct dmtf_measurement_block_device_mode {
+	u32 opmode_cap;	 /* OperationalModeCapabilties */
+	u32 opmode_sta;  /* OperationalModeState */
+	u32 devmode_cap; /* DeviceModeCapabilties */
+	u32 devmode_sta; /* DeviceModeState */
+} __packed;
+
+struct spdm_certchain_block_header {
+	u16 length;
+	u16 reserved;
+} __packed;
+
+/*
+ * TDI Report Structure as defined in TDISP.
+ */
+struct tdi_report_header {
+	u16 interface_info; /* TSM_TDI_REPORT_xxx */
+	u16 reserved2;
+	u16 msi_x_message_control;
+	u16 lnr_control;
+	u32 tph_control;
+	u32 mmio_range_count;
+} __packed;
+
+#define _BITSH(x)	(1 << (x))
+#define TSM_TDI_REPORT_NO_FW_UPDATE	_BITSH(0)  /* fw updates not permitted in CONFIG_LOCKED or RUN */
+#define TSM_TDI_REPORT_DMA_NO_PASID	_BITSH(1)  /* TDI generates DMA requests without PASID */
+#define TSM_TDI_REPORT_DMA_PASID	_BITSH(2)  /* TDI generates DMA requests with PASID */
+#define TSM_TDI_REPORT_ATS		_BITSH(3)  /* ATS supported and enabled for the TDI */
+#define TSM_TDI_REPORT_PRS		_BITSH(4)  /* PRS supported and enabled for the TDI */
+
+/*
+ * Each MMIO Range of the TDI is reported with the MMIO reporting offset added.
+ * Base and size in units of 4K pages
+ */
+struct tdi_report_mmio_range {
+	u64 first_page; /* First 4K page with offset added */
+	u32 num; 	/* Number of 4K pages in this range */
+	u32 range_attributes; /* TSM_TDI_REPORT_MMIO_xxx */
+} __packed;
+
+#define TSM_TDI_REPORT_MMIO_MSIX_TABLE		BIT(0)
+#define TSM_TDI_REPORT_MMIO_PBA			BIT(1)
+#define TSM_TDI_REPORT_MMIO_IS_NON_TEE		BIT(2)
+#define TSM_TDI_REPORT_MMIO_IS_UPDATABLE	BIT(3)
+#define TSM_TDI_REPORT_MMIO_RESERVED		GENMASK(15, 4)
+#define TSM_TDI_REPORT_MMIO_RANGE_ID		GENMASK(31, 16)
+
+struct tdi_report_footer {
+	u32 device_specific_info_len;
+	u8 device_specific_info[];
+} __packed;
+
+#define TDI_REPORT_HDR(rep)		((struct tdi_report_header *) ((rep)->data))
+#define TDI_REPORT_MR_NUM(rep)		(TDI_REPORT_HDR(rep)->mmio_range_count)
+#define TDI_REPORT_MR_OFF(rep)		((struct tdi_report_mmio_range *) (TDI_REPORT_HDR(rep) + 1))
+#define TDI_REPORT_MR(rep, rangeid)	TDI_REPORT_MR_OFF(rep)[rangeid]
+#define TDI_REPORT_FTR(rep)		((struct tdi_report_footer *) &TDI_REPORT_MR((rep), \
+					TDI_REPORT_MR_NUM(rep)))
+
+struct tsm_bus_ops;
+
+/* Physical device descriptor responsible for IDE/TDISP setup */
+struct tsm_dev {
+	const struct attribute_group *ag;
+	struct device *physdev; /* Physical PCI function #0 */
+	struct device dev; /* A child device of PCI function #0 */
+	struct tsm_spdm spdm;
+	struct mutex spdm_mutex;
+
+	u8 cert_slot;
+	u8 connected;
+	unsigned bound;
+
+	struct tsm_blob *meas;
+	struct tsm_blob *certs;
+#define TSM_MAX_NONCE_LEN	64
+	u8 nonce[TSM_MAX_NONCE_LEN];
+	size_t nonce_len;
+
+	void *data; /* Platform specific data */
+
+	struct tsm_subsys *tsm;
+	struct tsm_bus_subsys *tsm_bus;
+	/* Bus specific data follow this struct, see tsm_dev_to_bdata */
+};
+
+#define tsm_dev_to_bdata(tdev)	((tdev)?((void *)&(tdev)[1]):NULL)
+
+/* PCI function for passing through, can be the same as tsm_dev::pdev */
+struct tsm_tdi {
+	const struct attribute_group *ag;
+	struct device dev; /* A child device of PCI VF */
+	struct list_head node;
+	struct tsm_dev *tdev;
+
+	u8 rseg;
+	u8 rseg_valid;
+	bool validated;
+
+	struct tsm_blob *report;
+
+	void *data; /* Platform specific data */
+
+	struct kvm *kvm;
+	u16 guest_rid; /* BDFn of PCI Fn in the VM (when PCI TDISP) */
+};
+
+struct tsm_dev_status {
+	u8 ctx_state;
+	u8 tc_mask;
+	u8 certs_slot;
+	u16 device_id;
+	u16 segment_id;
+	u8 no_fw_update;
+	u16 ide_stream_id[8];
+};
+
+enum tsm_spdm_algos {
+	TSM_SPDM_ALGOS_DHE_SECP256R1,
+	TSM_SPDM_ALGOS_DHE_SECP384R1,
+	TSM_SPDM_ALGOS_AEAD_AES_128_GCM,
+	TSM_SPDM_ALGOS_AEAD_AES_256_GCM,
+	TSM_SPDM_ALGOS_ASYM_TPM_ALG_RSASSA_3072,
+	TSM_SPDM_ALGOS_ASYM_TPM_ALG_ECDSA_ECC_NIST_P256,
+	TSM_SPDM_ALGOS_ASYM_TPM_ALG_ECDSA_ECC_NIST_P384,
+	TSM_SPDM_ALGOS_HASH_TPM_ALG_SHA_256,
+	TSM_SPDM_ALGOS_HASH_TPM_ALG_SHA_384,
+	TSM_SPDM_ALGOS_KEY_SCHED_SPDM_KEY_SCHEDULE,
+};
+
+enum tsm_tdisp_state {
+	TDISP_STATE_CONFIG_UNLOCKED,
+	TDISP_STATE_CONFIG_LOCKED,
+	TDISP_STATE_RUN,
+	TDISP_STATE_ERROR,
+};
+
+struct tsm_tdi_status {
+	bool valid;
+	u8 meas_digest_fresh:1;
+	u8 meas_digest_valid:1;
+	u8 all_request_redirect:1;
+	u8 bind_p2p:1;
+	u8 lock_msix:1;
+	u8 no_fw_update:1;
+	u16 cache_line_size;
+	u64 spdm_algos; /* Bitmask of TSM_SPDM_ALGOS */
+	u8 certs_digest[48];
+	u8 meas_digest[48];
+	u8 interface_report_digest[48];
+	u64 intf_report_counter;
+	struct tdisp_interface_id id;
+	enum tsm_tdisp_state state;
+};
+
+struct tsm_bus_ops {
+	int (*spdm_forward)(struct tsm_spdm *spdm, u8 type);
+};
+
+struct tsm_bus_subsys {
+	struct tsm_bus_ops *ops;
+	struct notifier_block notifier;
+	struct tsm_subsys *tsm;
+};
+
+struct tsm_bus_subsys *pci_tsm_register(struct tsm_subsys *tsm_subsys);
+void pci_tsm_unregister(struct tsm_bus_subsys *subsys);
+
+/* tsm_hv_ops return codes for SPDM bouncing, when requested by the TSM */
+#define TSM_PROTO_CMA_SPDM		1
+#define TSM_PROTO_SECURED_CMA_SPDM	2
+
+struct tsm_hv_ops {
+	int (*dev_connect)(struct tsm_dev *tdev, void *private_data);
+	int (*dev_disconnect)(struct tsm_dev *tdev);
+	int (*dev_status)(struct tsm_dev *tdev, struct tsm_dev_status *s);
+	int (*dev_measurements)(struct tsm_dev *tdev);
+	int (*tdi_bind)(struct tsm_tdi *tdi, u32 bdfn, u64 vmid);
+	int (*tdi_unbind)(struct tsm_tdi *tdi);
+	int (*guest_request)(struct tsm_tdi *tdi, u8 __user *req, size_t reqlen,
+			     u8 __user *rsp, size_t rsplen, int *fw_err);
+	int (*tdi_status)(struct tsm_tdi *tdi, struct tsm_tdi_status *ts);
+};
+
+struct tsm_subsys {
+	struct device dev;
+	struct list_head tdi_head;
+	struct mutex lock;
+	const struct attribute_group *tdev_groups[3]; /* Common, host/guest, NULL */
+	const struct attribute_group *tdi_groups[3]; /* Common, host/guest, NULL */
+	int (*update_measurements)(struct tsm_dev *tdev);
+};
+
+struct tsm_subsys *tsm_register(struct device *parent, size_t extra,
+				const struct attribute_group *tdev_ag,
+				const struct attribute_group *tdi_ag,
+				int (*update_measurements)(struct tsm_dev *tdev));
+void tsm_unregister(struct tsm_subsys *subsys);
+
+struct tsm_host_subsys;
+struct tsm_host_subsys *tsm_host_register(struct device *parent,
+					  struct tsm_hv_ops *hvops,
+					  void *private_data);
+struct tsm_dev *tsm_dev_get(struct device *dev);
+void tsm_dev_put(struct tsm_dev *tdev);
+struct tsm_tdi *tsm_tdi_get(struct device *dev);
+void tsm_tdi_put(struct tsm_tdi *tdi);
+
+struct pci_dev;
+int pci_dev_tdi_validate(struct pci_dev *pdev, bool invalidate);
+int pci_dev_tdi_mmio_config(struct pci_dev *pdev, u32 range_id, bool tee);
+
+int tsm_dev_init(struct tsm_bus_subsys *tsm_bus, struct device *parent,
+		 size_t busdatalen, struct tsm_dev **ptdev);
+void tsm_dev_free(struct tsm_dev *tdev);
+int tsm_tdi_init(struct tsm_dev *tdev, struct device *dev);
+void tsm_tdi_free(struct tsm_tdi *tdi);
+
+/* IOMMUFD vIOMMU helpers */
+int tsm_tdi_bind(struct tsm_tdi *tdi, u32 guest_rid, int kvmfd);
+void tsm_tdi_unbind(struct tsm_tdi *tdi);
+int tsm_guest_request(struct tsm_tdi *tdi, u8 __user *req, size_t reqlen,
+		      u8 __user *res, size_t reslen, int *fw_err);
+
+/* Debug */
+ssize_t tsm_report_gen(struct tsm_blob *report, char *b, size_t len);
+
+/* IDE */
+int tsm_create_link(struct tsm_subsys *tsm, struct device *dev, const char *name);
+void tsm_remove_link(struct tsm_subsys *tsm, const char *name);
+#define tsm_register_ide_stream(tdev, ide) \
+	tsm_create_link((tdev)->tsm, &(tdev)->dev, (ide)->name)
+#define tsm_unregister_ide_stream(tdev, ide) \
+	tsm_remove_link((tdev)->tsm, (ide)->name)
+
 #endif /* __TSM_H */
