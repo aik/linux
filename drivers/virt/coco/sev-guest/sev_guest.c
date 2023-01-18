@@ -13,7 +13,6 @@
 #include <linux/mutex.h>
 #include <linux/io.h>
 #include <linux/platform_device.h>
-#include <linux/miscdevice.h>
 #include <linux/set_memory.h>
 #include <linux/fs.h>
 #include <linux/tsm.h>
@@ -32,19 +31,6 @@
 #define DEVICE_NAME	"sev-guest"
 
 #define SVSM_MAX_RETRIES		3
-
-struct snp_guest_dev {
-	struct device *dev;
-	struct miscdevice misc;
-
-	struct snp_msg_desc *msg_desc;
-
-	union {
-		struct snp_report_req report;
-		struct snp_derived_key_req derived_key;
-		struct snp_ext_report_req ext_report;
-	} req;
-};
 
 /*
  * The VMPCK ID represents the key used by the SNP guest to communicate with the

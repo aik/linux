@@ -10,6 +10,7 @@
 
 #include <linux/types.h>
 #include <linux/sev-guest.h>
+#include <linux/miscdevice.h>
 
 #include <asm/insn.h>
 #include <asm/sev-common.h>
@@ -292,6 +293,19 @@ struct snp_msg_desc {
 	u32 *os_area_msg_seqno;
 	u8 *vmpck;
 	int vmpck_id;
+};
+
+struct snp_guest_dev {
+	struct device *dev;
+	struct miscdevice misc;
+
+	struct snp_msg_desc *msg_desc;
+
+	union {
+		struct snp_report_req report;
+		struct snp_derived_key_req derived_key;
+		struct snp_ext_report_req ext_report;
+	} req;
 };
 
 /*
