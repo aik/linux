@@ -125,6 +125,35 @@ static __always_inline void local_db_restore(unsigned long dr7)
 		set_debugreg(dr7, 7);
 }
 
+/* noinline here inline __always_inline'd native_get_debugreg(int regno) */
+static noinline unsigned long native_get_debugreg7(void)
+{
+	unsigned long dr7;
+	asm("mov %%db7, %0" :"=r" (dr7));
+	return dr7;
+}
+
+static __always_inline unsigned long local_db_save_exc_nmi(void)
+{
+	unsigned long dr7;
+
+	if (static_cpu_has(X86_FEATURE_HYPERVISOR) && !hw_breakpoint_active())
+		return 0;
+
+	dr7 = native_get_debugreg7();
+	dr7 &= ~0x400; /* architecturally set bit */
+	if (dr7)
+		set_debugreg(0, 7);
+	/*
+	 * Ensure the compiler doesn't lower the above statements into
+	 * the critical section; disabling breakpoints late would not
+	 * be good.
+	 */
+	barrier();
+
+	return dr7;
+}
+
 #ifdef CONFIG_CPU_SUP_AMD
 extern void set_dr_addr_mask(unsigned long mask, int dr);
 #else

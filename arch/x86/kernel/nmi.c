@@ -503,7 +503,7 @@ nmi_restart:
 	 */
 	sev_es_ist_enter(regs);
 
-	this_cpu_write(nmi_dr7, local_db_save());
+	this_cpu_write(nmi_dr7, local_db_save_exc_nmi());
 
 	irq_state = irqentry_nmi_enter(regs);
 
