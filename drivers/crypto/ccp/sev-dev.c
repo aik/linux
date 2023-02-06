@@ -1483,8 +1483,8 @@ static int __sev_snp_shutdown_locked(int *error)
 	data.iommu_snp_shutdown = 1;
 
 	/* Free the memory used for caching the certificate data */
-	kfree(sev->snp_certs_data);
-	sev->snp_certs_data = NULL;
+	sev_snp_certs_put(sev->certs);
+	sev->certs = NULL;
 
 	wbinvd_on_all_cpus();
 
@@ -1839,17 +1839,17 @@ static int sev_ioctl_snp_get_config(struct sev_issue_cmd *argp)
 	}
 
 	/* Copy the extended certs programmed through the SNP_SET_CONFIG */
-	if (input.certs_address && sev->snp_certs_data) {
-		if (input.certs_len < sev->snp_certs_len) {
+	if (input.certs_address && sev->certs) {
+		if (input.certs_len < sev->certs->len) {
 			/* Return the certs length to userspace */
-			input.certs_len = sev->snp_certs_len;
+			input.certs_len = sev->certs->len;
 
 			ret = -ENOSR;
 			goto e_done;
 		}
 
 		if (copy_to_user((void * __user)input.certs_address,
-				 sev->snp_certs_data, sev->snp_certs_len))
+				 sev->certs->data, sev->certs->len))
 			return -EFAULT;
 	}
 
@@ -1911,15 +1911,8 @@ static int sev_ioctl_snp_set_config(struct sev_issue_cmd *argp, bool writable)
 	 * If the new certs are passed then cache it else free the old certs.
 	 */
 	mutex_lock(&sev->snp_certs_lock);
-	if (certs) {
-		kfree(sev->snp_certs_data);
-		sev->snp_certs_data = certs;
-		sev->snp_certs_len = input.certs_len;
-	} else {
-		kfree(sev->snp_certs_data);
-		sev->snp_certs_data = NULL;
-		sev->snp_certs_len = 0;
-	}
+	sev_snp_certs_put(sev->certs);
+	sev->certs = sev_snp_certs_alloc(certs, input.certs_len);
 	mutex_unlock(&sev->snp_certs_lock);
 
 	return 0;
@@ -2070,10 +2063,54 @@ int snp_guest_dbg_decrypt_page(u64 gctx_pfn, u64 src_pfn, u64 dst_pfn, int *erro
 }
 EXPORT_SYMBOL_GPL(snp_guest_dbg_decrypt_page);
 
-int snp_guest_ext_guest_request(struct sev_data_snp_guest_request *data,
-				unsigned long vaddr, unsigned long *npages, unsigned long *fw_err)
+static void sev_snp_certs_release(struct kref *kref)
 {
-	unsigned long expected_npages;
+	struct sev_snp_certs *certs = container_of(kref, struct sev_snp_certs, kref);
+
+	kfree(certs->data);
+}
+
+struct sev_snp_certs *sev_snp_certs_alloc(void *data, u32 len)
+{
+	struct sev_snp_certs *certs;
+
+	if (!len || !data)
+		return NULL;
+
+	certs = kzalloc(sizeof(*certs), GFP_KERNEL);
+	if (!certs)
+		return NULL;
+
+	certs->data = data;
+	certs->len = len;
+	kref_init(&certs->kref);
+
+	return certs;
+}
+EXPORT_SYMBOL_GPL(sev_snp_certs_alloc);
+
+static struct sev_snp_certs *sev_snp_certs_get(struct sev_snp_certs *certs)
+{
+	if (!certs)
+		return NULL;
+
+	kref_get(&certs->kref);
+
+	return certs;
+}
+
+void sev_snp_certs_put(struct sev_snp_certs *certs)
+{
+	if (!certs)
+		return;
+
+	kref_put(&certs->kref, sev_snp_certs_release);
+}
+EXPORT_SYMBOL_GPL(sev_snp_certs_put);
+
+int sev_issue_cmd_external_user_cert(struct file *filep, unsigned int cmd, void *data,
+				     struct sev_snp_certs **certs, int *error)
+{
 	struct sev_device *sev;
 	int rc;
 
@@ -2086,36 +2123,19 @@ int snp_guest_ext_guest_request(struct sev_data_snp_guest_request *data,
 		return -EINVAL;
 
 	mutex_lock(&sev->snp_certs_lock);
-	/*
-	 * Check if there is enough space to copy the certificate chain. Otherwise
-	 * return ERROR code defined in the GHCB specification.
-	 */
-	expected_npages = sev->snp_certs_len >> PAGE_SHIFT;
-	if (*npages < expected_npages) {
-		*npages = expected_npages;
-		*fw_err = SNP_GUEST_REQ_INVALID_LEN;
-		mutex_unlock(&sev->snp_certs_lock);
-		return -EINVAL;
-	}
 
-	rc = sev_do_cmd(SEV_CMD_SNP_GUEST_REQUEST, data, (int *)fw_err);
+	rc = sev_issue_cmd_external_user(filep, cmd, data, error);
 	if (rc) {
 		mutex_unlock(&sev->snp_certs_lock);
 		return rc;
 	}
 
-	/* Copy the certificate blob */
-	if (sev->snp_certs_data) {
-		*npages = expected_npages;
-		memcpy((void *)vaddr, sev->snp_certs_data, *npages << PAGE_SHIFT);
-	} else {
-		*npages = 0;
-	}
+	*certs = sev_snp_certs_get(sev->certs);
 
 	mutex_unlock(&sev->snp_certs_lock);
 	return rc;
 }
-EXPORT_SYMBOL_GPL(snp_guest_ext_guest_request);
+EXPORT_SYMBOL_GPL(sev_issue_cmd_external_user_cert);
 
 static void sev_exit(struct kref *ref)
 {

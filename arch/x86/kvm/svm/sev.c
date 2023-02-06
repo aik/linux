@@ -394,6 +394,23 @@ static int sev_issue_cmd(struct kvm *kvm, int id, void *data, int *error)
 	return __sev_issue_cmd(sev->fd, id, data, error);
 }
 
+static int sev_issue_cmd_cert(struct kvm *kvm, int id, void *data,
+			      struct sev_snp_certs **certs, int *error)
+{
+	struct kvm_sev_info *sev = &to_kvm_svm(kvm)->sev_info;
+	struct fd f;
+	int ret;
+
+	f = fdget(sev->fd);
+	if (!f.file)
+		return -EBADF;
+
+	ret = sev_issue_cmd_external_user_cert(f.file, id, data, certs, error);
+
+	fdput(f);
+	return ret;
+}
+
 static int sev_launch_start(struct kvm *kvm, struct kvm_sev_cmd *argp)
 {
 	struct kvm_sev_info *sev = &to_kvm_svm(kvm)->sev_info;
@@ -2060,15 +2077,9 @@ out_fput:
  */
 static void *snp_context_create(struct kvm *kvm, struct kvm_sev_cmd *argp)
 {
-	struct kvm_sev_info *sev = &to_kvm_svm(kvm)->sev_info;
 	struct sev_data_snp_addr data = {};
-	void *context, *certs_data;
+	void *context;
 	int rc;
-
-	/* Allocate memory used for the certs data in SNP guest request */
-	certs_data = kzalloc(SEV_FW_BLOB_MAX_SIZE, GFP_KERNEL_ACCOUNT);
-	if (!certs_data)
-		return NULL;
 
 	/* Allocate memory for context page */
 	context = snp_alloc_firmware_page(GFP_KERNEL_ACCOUNT);
@@ -2080,14 +2091,10 @@ static void *snp_context_create(struct kvm *kvm, struct kvm_sev_cmd *argp)
 	if (rc)
 		goto e_free;
 
-	sev->snp_certs_data = certs_data;
-	sev->snp_certs_len = 0;
-
 	return context;
 
 e_free:
 	snp_free_firmware_page(context);
-	kfree(certs_data);
 	return NULL;
 }
 
@@ -2381,12 +2388,12 @@ static int snp_get_instance_certs(struct kvm *kvm, struct kvm_sev_cmd *argp)
 		return -EFAULT;
 
 	/* No instance certs set. */
-	if (!sev->snp_certs_len)
+	if (!sev->certs)
 		return -ENOENT;
 
-	if (params.certs_len < sev->snp_certs_len) {
+	if (params.certs_len < sev->certs->len) {
 		/* Output buffer too small. Return the required size. */
-		params.certs_len = sev->snp_certs_len;
+		params.certs_len = sev->certs->len;
 
 		if (copy_to_user((void __user *)(uintptr_t)argp->data, &params,
 				 sizeof(params)))
@@ -2396,7 +2403,7 @@ static int snp_get_instance_certs(struct kvm *kvm, struct kvm_sev_cmd *argp)
 	}
 
 	if (copy_to_user((void __user *)(uintptr_t)params.certs_uaddr,
-			 sev->snp_certs_data, sev->snp_certs_len))
+			 sev->certs->data, sev->certs->len))
 		return -EFAULT;
 
 	return 0;
@@ -2406,8 +2413,10 @@ static int snp_set_instance_certs(struct kvm *kvm, struct kvm_sev_cmd *argp)
 {
 	struct kvm_sev_info *sev = &to_kvm_svm(kvm)->sev_info;
 	unsigned long length = SEV_FW_BLOB_MAX_SIZE;
-	void *to_certs = sev->snp_certs_data;
+	void *to_certs;
 	struct kvm_sev_snp_set_certs params;
+	struct sev_snp_certs *certs;
+	int ret;
 
 	if (!sev_snp_guest(kvm))
 		return -ENOTTY;
@@ -2427,22 +2436,38 @@ static int snp_set_instance_certs(struct kvm *kvm, struct kvm_sev_cmd *argp)
 	 * specific certificates.
 	 */
 	if (params.certs_len == 0) {
-		sev->snp_certs_len = 0;
+		sev_snp_certs_put(sev->certs);
+		sev->certs = NULL;
 		return 0;
 	}
 
 	/* Page-align the length */
 	length = (params.certs_len + PAGE_SIZE - 1) & PAGE_MASK;
 
+	to_certs = kmalloc(length, GFP_KERNEL);
+	if (!to_certs)
+		return -ENOMEM;
+
 	if (copy_from_user(to_certs,
 			   (void __user *)(uintptr_t)params.certs_uaddr,
 			   params.certs_len)) {
-		return -EFAULT;
+		ret = -EFAULT;
+		goto error_exit;
 	}
 
-	sev->snp_certs_len = length;
+	certs = sev_snp_certs_alloc(to_certs, length);
+	if (!certs) {
+		ret = -ENOMEM;
+		goto error_exit;
+	}
+
+	sev_snp_certs_put(sev->certs);
+	sev->certs = certs;
 
 	return 0;
+error_exit:
+	kfree(to_certs);
+	return ret;
 }
 
 int sev_mem_enc_ioctl(struct kvm *kvm, void __user *argp)
@@ -2760,7 +2785,7 @@ static int snp_decommission_context(struct kvm *kvm)
 	snp_free_firmware_page(sev->snp_context);
 	sev->snp_context = NULL;
 
-	kfree(sev->snp_certs_data);
+	sev_snp_certs_put(sev->certs);
 
 	return 0;
 }
@@ -3584,15 +3609,16 @@ static unsigned long snp_setup_guest_buf(struct vcpu_svm *svm,
 static void snp_cleanup_guest_buf(struct sev_data_snp_guest_request *data, unsigned long *rc)
 {
 	u64 pfn = __sme_clr(data->res_paddr) >> PAGE_SHIFT;
+	bool is_ok = (*rc & 0xFFFFFFFF) == SEV_RET_SUCCESS; /* to preserve the GHCB error(s) */
 	int ret;
 
 	ret = snp_page_reclaim(pfn);
-	if (ret)
-		*rc = SEV_RET_INVALID_ADDRESS;
+	if (ret && is_ok)
+		*rc |= SEV_RET_INVALID_ADDRESS;
 
 	ret = rmp_make_shared(pfn, PG_LEVEL_4K);
-	if (ret)
-		*rc = SEV_RET_INVALID_ADDRESS;
+	if (ret && is_ok)
+		*rc |= SEV_RET_INVALID_ADDRESS;
 }
 
 static void snp_handle_guest_request(struct vcpu_svm *svm, gpa_t req_gpa, gpa_t resp_gpa)
@@ -3636,10 +3662,12 @@ static void snp_handle_ext_guest_request(struct vcpu_svm *svm, gpa_t req_gpa, gp
 	struct sev_data_snp_guest_request req = {0};
 	struct kvm_vcpu *vcpu = &svm->vcpu;
 	struct kvm *kvm = vcpu->kvm;
+	struct sev_snp_certs *certs = NULL;
 	unsigned long data_npages;
 	struct kvm_sev_info *sev;
-	unsigned long rc, err;
+	unsigned long exitcode;
 	u64 data_gpa;
+	int err, rc;
 
 	if (!sev_snp_guest(vcpu->kvm)) {
 		rc = SEV_RET_INVALID_GUEST;
@@ -3667,49 +3695,44 @@ static void snp_handle_ext_guest_request(struct vcpu_svm *svm, gpa_t req_gpa, gp
 	 * if the size is inappropriate for the override. Otherwise, use a
 	 * regular guest request and copy back the instance certs.
 	 */
-	if (sev->snp_certs_len) {
-		if ((data_npages << PAGE_SHIFT) < sev->snp_certs_len) {
-			rc = -EINVAL;
-			err = SNP_GUEST_REQ_INVALID_LEN;
-			goto datalen;
+	if (sev->certs) {
+		if ((data_npages << PAGE_SHIFT) < sev->certs->len) {
+			/*
+			 * If buffer length is small then return the expected
+			 * length in rbx.
+			 */
+			vcpu->arch.regs[VCPU_REGS_RBX] = sev->certs->len >> PAGE_SHIFT;
+			exitcode = SNP_GUEST_REQ_INVALID_LEN;
+			goto cleanup;
 		}
-		rc = sev_issue_cmd(kvm, SEV_CMD_SNP_GUEST_REQUEST, &req,
-				   (int *)&err);
+		rc = sev_issue_cmd(kvm, SEV_CMD_SNP_GUEST_REQUEST, &req, &err);
 	} else {
-		rc = snp_guest_ext_guest_request(&req,
-						 (unsigned long)sev->snp_certs_data,
-						 &data_npages, &err);
+		rc = sev_issue_cmd_cert(kvm, SEV_CMD_SNP_GUEST_REQUEST, &req, &certs, &err);
+		if (!rc && certs) {
+			sev_snp_certs_put(sev->certs);
+			sev->certs = certs;
+		}
 	}
-datalen:
-	if (sev->snp_certs_len)
-		data_npages = sev->snp_certs_len >> PAGE_SHIFT;
 
 	if (rc) {
-		/*
-		 * If buffer length is small then return the expected
-		 * length in rbx.
-		 */
-		if (err == SNP_GUEST_REQ_INVALID_LEN)
-			vcpu->arch.regs[VCPU_REGS_RBX] = data_npages;
-
 		/* pass the firmware error code */
-		rc = err;
+		exitcode = err;
 		goto cleanup;
 	}
 
 	/* Copy the certificate blob in the guest memory */
-	if (data_npages &&
-	    kvm_write_guest(kvm, data_gpa, sev->snp_certs_data, data_npages << PAGE_SHIFT))
-		rc = SEV_RET_INVALID_ADDRESS;
+	if (sev->certs &&
+	    kvm_write_guest(kvm, data_gpa, sev->certs->data, sev->certs->len))
+		exitcode = SEV_RET_INVALID_ADDRESS;
 
 cleanup:
-	snp_cleanup_guest_buf(&req, &rc);
+	snp_cleanup_guest_buf(&req, &exitcode);
 
 unlock:
 	mutex_unlock(&sev->guest_req_lock);
 
 e_fail:
-	svm_set_ghcb_sw_exit_info_2(vcpu, rc);
+	svm_set_ghcb_sw_exit_info_2(vcpu, exitcode);
 }
 
 static kvm_pfn_t gfn_to_pfn_restricted(struct kvm *kvm, gfn_t gfn)
