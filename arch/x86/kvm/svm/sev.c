@@ -3000,6 +3000,8 @@ static void sev_es_init_vmcb(struct vcpu_svm *svm)
 		vmcb_set_intercept(&vmcb->control, INTERCEPT_DR7_READ);
 		vmcb_set_intercept(&vmcb->control, INTERCEPT_DR7_WRITE);
 		recalc_intercepts(svm);
+	} else {
+		clr_exception_intercept(svm, DB_VECTOR);
 	}
 
 	/* Can't intercept XSETBV, HV can't modify XCR0 directly */
