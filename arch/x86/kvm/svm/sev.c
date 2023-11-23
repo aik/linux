@@ -2541,6 +2541,8 @@ e_free:
 	return ret;
 }
 
+static int snp_mmio_rmp_update(struct kvm *kvm, struct kvm_sev_cmd *argp);
+
 int sev_mem_enc_ioctl(struct kvm *kvm, void __user *argp)
 {
 	struct kvm_sev_cmd sev_cmd;
@@ -2645,6 +2647,9 @@ int sev_mem_enc_ioctl(struct kvm *kvm, void __user *argp)
 		break;
 	case KVM_SEV_SNP_LAUNCH_FINISH:
 		r = snp_launch_finish(kvm, &sev_cmd);
+		break;
+	case KVM_SEV_SNP_MMIO_RMP_UPDATE:
+		r = snp_mmio_rmp_update(kvm, &sev_cmd);
 		break;
 	default:
 		r = -EINVAL;
@@ -4113,6 +4118,135 @@ request_invalid:
 	ghcb_set_sw_exit_info_1(svm->sev_es.ghcb, 2);
 	ghcb_set_sw_exit_info_2(svm->sev_es.ghcb, GHCB_ERR_INVALID_INPUT);
 	return 1; /* resume guest */
+}
+
+static int hva_to_pfn_remapped(struct vm_area_struct *vma,
+			       unsigned long addr, bool write_fault,
+			       bool *writable, kvm_pfn_t *p_pfn)
+{
+	struct follow_pfnmap_args args = { .vma = vma, .address = addr };
+	kvm_pfn_t pfn;
+	int r;
+
+	r = follow_pfnmap_start(&args);
+	if (r) {
+		/*
+		 * get_user_pages fails for VM_IO and VM_PFNMAP vmas and does
+		 * not call the fault handler, so do it here.
+		 */
+		bool unlocked = false;
+		r = fixup_user_fault(current->mm, addr,
+				     (write_fault ? FAULT_FLAG_WRITE : 0),
+				     &unlocked);
+		if (unlocked)
+			return -EAGAIN;
+		if (r)
+			return r;
+
+		r = follow_pfnmap_start(&args);
+		if (r)
+			return r;
+	}
+
+	if (write_fault && !args.writable) {
+		pfn = KVM_PFN_ERR_RO_FAULT;
+		goto out;
+	}
+
+	if (writable)
+		*writable = args.writable;
+	pfn = args.pfn;
+out:
+	follow_pfnmap_end(&args);
+	*p_pfn = pfn;
+
+	return r;
+}
+
+static bool vma_is_valid(struct vm_area_struct *vma, bool write_fault)
+{
+	if (unlikely(!(vma->vm_flags & VM_READ)))
+		return false;
+
+	if (write_fault && (unlikely(!(vma->vm_flags & VM_WRITE))))
+		return false;
+
+	return true;
+}
+
+static inline int check_user_page_hwpoison(unsigned long addr)
+{
+	int rc, flags = FOLL_HWPOISON | FOLL_WRITE;
+
+	rc = get_user_pages(addr, 1, flags, NULL);
+	return rc == -EHWPOISON;
+}
+
+static kvm_pfn_t hva_to_pfn(unsigned long addr, bool atomic, bool interruptible,
+		     bool *async, bool write_fault, bool *writable)
+{
+	struct vm_area_struct *vma;
+	kvm_pfn_t pfn;
+	int r;
+
+	mmap_read_lock(current->mm);
+retry:
+	vma = vma_lookup(current->mm, addr);
+
+	if (vma == NULL)
+		pfn = KVM_PFN_ERR_FAULT;
+	else if (vma->vm_flags & (VM_IO | VM_PFNMAP)) {
+		// Here we only expect MMIO for validation
+		r = hva_to_pfn_remapped(vma, addr, write_fault, writable, &pfn);
+		if (r == -EAGAIN)
+			goto retry;
+		if (r < 0)
+			pfn = KVM_PFN_ERR_FAULT;
+	} else {
+		if (async && vma_is_valid(vma, write_fault))
+			*async = true;
+		pfn = KVM_PFN_ERR_FAULT;
+	}
+
+	mmap_read_unlock(current->mm);
+	return pfn;
+}
+
+
+static int snp_mmio_rmp_update(struct kvm *kvm, struct kvm_sev_cmd *argp)
+{
+	struct kvm_sev_info *sev = &to_kvm_svm(kvm)->sev_info;
+	struct kvm_sev_snp_rmp_update params;
+	bool async = false, writable = false;
+	int ret;
+
+	if (!sev_snp_guest(kvm))
+		return -ENOTTY;
+
+	if (!sev->snp_context)
+		return -EINVAL;
+
+	if (copy_from_user(&params, u64_to_user_ptr(argp->data), sizeof(params)))
+		return -EFAULT;
+
+	for (phys_addr_t off = 0; off < params.size; off += PAGE_SIZE) {
+		kvm_pfn_t pfn = hva_to_pfn(params.useraddr + off, false,
+					   false /*interruptible*/,
+					   &async, false, &writable);
+
+		if (is_error_pfn(pfn))
+			return -EINVAL;
+
+		if (params.flags & KVM_SEV_SNP_RMP_FLAG_PRIVATE)
+			ret = rmp_make_private_mmio(pfn, params.gpa + off, PG_LEVEL_4K,
+						    sev->asid, false/*Immutable*/);
+		else
+			ret = rmp_make_shared_mmio(pfn, PG_LEVEL_4K);
+		if (ret)
+			break;
+	}
+
+	return ret;
 }
 
 static int sev_handle_vmgexit_msr_protocol(struct vcpu_svm *svm)
