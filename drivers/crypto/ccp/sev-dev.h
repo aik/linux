@@ -71,6 +71,7 @@ struct sev_device {
 	struct fw_upload *fwl;
 	bool fw_cancel;
 #endif /* CONFIG_FW_UPLOAD */
+	bool tio_en;
 };
 
 bool sev_version_greater_or_equal(u8 maj, u8 min);
