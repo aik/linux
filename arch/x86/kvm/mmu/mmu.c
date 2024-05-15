@@ -4347,7 +4347,11 @@ static int __kvm_mmu_faultin_pfn(struct kvm_vcpu *vcpu,
 {
 	unsigned int foll = fault->write ? FOLL_WRITE : 0;
 
-	if (fault->is_private)
+	if (fault->slot && fault->is_private && !kvm_slot_can_be_private(fault->slot) &&
+	    (vcpu->kvm->arch.vm_type == KVM_X86_SNP_VM))
+		pr_warn("%s: private SEV TIO MMIO fault for fault->gfn=%llx\n",
+			__func__, fault->gfn);
+	else if (fault->is_private)
 		return kvm_mmu_faultin_pfn_private(vcpu, fault);
 
 	foll |= FOLL_NOWAIT;
