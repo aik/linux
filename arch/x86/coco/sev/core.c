@@ -2592,6 +2592,11 @@ static int snp_issue_guest_request(u64 exit_code, struct snp_req_data *input,
 	if (exit_code == SVM_VMGEXIT_EXT_GUEST_REQUEST) {
 		ghcb_set_rax(ghcb, input->data_gpa);
 		ghcb_set_rbx(ghcb, input->data_npages);
+	} else if (exit_code == SVM_VMGEXIT_SEV_TIO_GUEST_REQUEST) {
+		ghcb_set_rax(ghcb, input->data_gpa);
+		ghcb_set_rbx(ghcb, input->data_npages);
+		ghcb_set_rcx(ghcb, input->guest_rid);
+		ghcb_set_rdx(ghcb, input->param);
 	}
 
 	ret = sev_es_ghcb_hv_call(ghcb, &ctxt, exit_code, input->req_gpa, input->resp_gpa);
@@ -2601,6 +2606,8 @@ static int snp_issue_guest_request(u64 exit_code, struct snp_req_data *input,
 	*exitinfo2 = ghcb->save.sw_exit_info_2;
 	switch (*exitinfo2) {
 	case 0:
+		if (exit_code == SVM_VMGEXIT_SEV_TIO_GUEST_REQUEST)
+			input->param = ghcb_get_rdx(ghcb);
 		break;
 
 	case SNP_GUEST_VMM_ERR(SNP_GUEST_VMM_ERR_BUSY):
@@ -2610,6 +2617,10 @@ static int snp_issue_guest_request(u64 exit_code, struct snp_req_data *input,
 	case SNP_GUEST_VMM_ERR(SNP_GUEST_VMM_ERR_INVALID_LEN):
 		/* Number of expected pages are returned in RBX */
 		if (exit_code == SVM_VMGEXIT_EXT_GUEST_REQUEST) {
+			input->data_npages = ghcb_get_rbx(ghcb);
+			ret = -ENOSPC;
+			break;
+		} else if (exit_code == SVM_VMGEXIT_SEV_TIO_GUEST_REQUEST) {
 			input->data_npages = ghcb_get_rbx(ghcb);
 			ret = -ENOSPC;
 			break;
@@ -2974,7 +2985,8 @@ static int verify_and_dec_payload(struct snp_msg_desc *mdesc, struct snp_guest_r
 		return -EBADMSG;
 
 	/* Verify response message type and version number. */
-	if (resp_msg_hdr->msg_type != (req_msg_hdr->msg_type + 1) ||
+	if ((resp_msg_hdr->msg_type != (req_msg_hdr->msg_type + 1) &&
+	     (resp_msg_hdr->msg_type != (req_msg_hdr->msg_type - 0x80))) ||
 	    resp_msg_hdr->msg_version != req_msg_hdr->msg_version)
 		return -EBADMSG;
 
@@ -3047,6 +3059,11 @@ retry_request:
 	rc = snp_issue_guest_request(exit_code, input, exitinfo2);
 	switch (rc) {
 	case -ENOSPC:
+		if (exit_code == SVM_VMGEXIT_SEV_TIO_GUEST_REQUEST) {
+			pr_warn("SVM_VMGEXIT_SEV_TIO_GUEST_REQUEST => -ENOSPC");
+			break;
+		}
+
 		/*
 		 * If the extended guest request fails due to having too
 		 * small of a certificate data buffer, retry the same

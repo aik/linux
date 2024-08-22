@@ -119,6 +119,8 @@ struct snp_req_data {
 	unsigned long resp_gpa;
 	unsigned long data_gpa;
 	unsigned int data_npages;
+	unsigned int guest_rid;
+	unsigned long param;
 };
 
 #define MAX_AUTHTAG_LEN		32
@@ -306,6 +308,11 @@ struct snp_guest_dev {
 		struct snp_derived_key_req derived_key;
 		struct snp_ext_report_req ext_report;
 	} req;
+
+#if defined(CONFIG_PCI_TSM) || defined(CONFIG_PCI_TSM_MODULE)
+	struct tsm_guest_subsys *tsm;
+	struct tsm_bus_subsys *tsm_bus;
+#endif
 };
 
 /*
@@ -516,6 +523,8 @@ void *snp_alloc_shared_pages(size_t sz);
 void snp_free_shared_pages(void *buf, size_t sz);
 int snp_send_guest_request(struct snp_msg_desc *mdesc, struct snp_guest_req *req,
 			   u64 *exitinfo2);
+struct snp_guest_dev;
+void sev_guest_tsm_set_ops(bool set, struct snp_guest_dev *snp_dev);
 
 void __init snp_secure_tsc_prepare(void);
 void __init snp_secure_tsc_init(void);
