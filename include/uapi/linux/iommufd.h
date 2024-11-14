@@ -55,6 +55,8 @@ enum {
 	IOMMUFD_CMD_VIOMMU_ALLOC = 0x90,
 	IOMMUFD_CMD_VDEVICE_ALLOC = 0x91,
 	IOMMUFD_CMD_IOAS_CHANGE_PROCESS = 0x92,
+	IOMMUFD_CMD_VDEVICE_TSM_BIND = 0x93,
+	IOMMUFD_CMD_VDEVICE_TSM_GUEST_REQUEST = 0x94,
 };
 
 /**
@@ -1014,5 +1016,28 @@ struct iommu_ioas_change_process {
 
 #define IOMMU_IOAS_CHANGE_PROCESS \
 	_IO(IOMMUFD_TYPE, IOMMUFD_CMD_IOAS_CHANGE_PROCESS)
+
+struct iommu_vdevice_tsm_bind {
+	__u32 size;
+	__u32 viommu_id;
+	__u32 dev_id;
+	__u32 vdevice_id;
+	__s32 kvmfd;
+	__u32 pad;
+} __packed;
+#define IOMMU_VDEVICE_TSM_BIND _IO(IOMMUFD_TYPE, IOMMUFD_CMD_VDEVICE_TSM_BIND)
+
+struct iommu_vdevice_tsm_guest_request {
+	__u32 size;
+	__u32 viommu_id;
+	__u32 dev_id;
+	__u32 vdevice_id;
+	__u8 *req;
+	__u8 *rsp;
+	__u32 rsp_len;
+	__u32 req_len;
+	__s32 fw_err;
+} __packed;
+#define IOMMU_VDEVICE_TSM_GUEST_REQUEST _IO(IOMMUFD_TYPE, IOMMUFD_CMD_VDEVICE_TSM_GUEST_REQUEST)
 
 #endif

@@ -2,6 +2,7 @@
 /* Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES
  */
 #include "iommufd_private.h"
+#include "linux/tsm.h"
 
 void iommufd_viommu_destroy(struct iommufd_object *obj)
 {
@@ -88,6 +89,15 @@ void iommufd_vdevice_destroy(struct iommufd_object *obj)
 		container_of(obj, struct iommufd_vdevice, obj);
 	struct iommufd_viommu *viommu = vdev->viommu;
 
+	if (vdev->tsm_bound) {
+		struct tsm_tdi *tdi = tsm_tdi_get(vdev->dev);
+
+		if (tdi) {
+			tsm_tdi_unbind(tdi);
+			tsm_tdi_put(tdi);
+		}
+	}
+
 	/* xa_cmpxchg is okay to fail if alloc failed xa_cmpxchg previously */
 	xa_cmpxchg(&viommu->vdevs, vdev->id, vdev, NULL, GFP_KERNEL);
 	refcount_dec(&viommu->obj.users);
@@ -150,6 +160,108 @@ int iommufd_vdevice_alloc_ioctl(struct iommufd_ucmd *ucmd)
 out_abort:
 	iommufd_object_abort_and_destroy(ucmd->ictx, &vdev->obj);
 out_put_idev:
+	iommufd_put_object(ucmd->ictx, &idev->obj);
+out_put_viommu:
+	iommufd_put_object(ucmd->ictx, &viommu->obj);
+	return rc;
+}
+
+int iommufd_vdevice_tsm_bind_ioctl(struct iommufd_ucmd *ucmd)
+{
+	struct iommu_vdevice_tsm_bind *cmd = ucmd->cmd;
+	struct iommufd_viommu *viommu;
+	struct iommufd_vdevice *vdev;
+	struct iommufd_device *idev;
+	struct tsm_tdi *tdi;
+	int rc = 0;
+
+	viommu = iommufd_get_viommu(ucmd, cmd->viommu_id);
+	if (IS_ERR(viommu))
+		return PTR_ERR(viommu);
+
+	idev = iommufd_get_device(ucmd, cmd->dev_id);
+	if (IS_ERR(idev)) {
+		rc = PTR_ERR(idev);
+		goto out_put_viommu;
+	}
+
+	vdev = container_of(iommufd_get_object(ucmd->ictx, cmd->vdevice_id,
+					       IOMMUFD_OBJ_VDEVICE),
+			    struct iommufd_vdevice, obj);
+	if (IS_ERR(idev)) {
+		rc = PTR_ERR(idev);
+		goto out_put_dev;
+	}
+
+	tdi = tsm_tdi_get(idev->dev);
+	if (!tdi) {
+		rc = -ENODEV;
+		goto out_put_vdev;
+	}
+
+	rc = tsm_tdi_bind(tdi, vdev->id, cmd->kvmfd);
+	if (rc)
+		goto out_put_tdi;
+
+	vdev->tsm_bound = true;
+
+	rc = iommufd_ucmd_respond(ucmd, sizeof(*cmd));
+out_put_tdi:
+	tsm_tdi_put(tdi);
+out_put_vdev:
+	iommufd_put_object(ucmd->ictx, &vdev->obj);
+out_put_dev:
+	iommufd_put_object(ucmd->ictx, &idev->obj);
+out_put_viommu:
+	iommufd_put_object(ucmd->ictx, &viommu->obj);
+	return rc;
+}
+
+int iommufd_vdevice_tsm_guest_request_ioctl(struct iommufd_ucmd *ucmd)
+{
+	struct iommu_vdevice_tsm_guest_request *cmd = ucmd->cmd;
+	struct iommufd_viommu *viommu;
+	struct iommufd_vdevice *vdev;
+	struct iommufd_device *idev;
+	struct tsm_tdi *tdi;
+	int rc = 0, fw_err = 0;
+
+	viommu = iommufd_get_viommu(ucmd, cmd->viommu_id);
+	if (IS_ERR(viommu))
+		return PTR_ERR(viommu);
+
+	idev = iommufd_get_device(ucmd, cmd->dev_id);
+	if (IS_ERR(idev)) {
+		rc = PTR_ERR(idev);
+		goto out_put_viommu;
+	}
+
+	vdev = container_of(iommufd_get_object(ucmd->ictx, cmd->vdevice_id,
+					       IOMMUFD_OBJ_VDEVICE),
+			    struct iommufd_vdevice, obj);
+	if (IS_ERR(idev)) {
+		rc = PTR_ERR(idev);
+		goto out_put_dev;
+	}
+
+	tdi = tsm_tdi_get(idev->dev);
+	if (!tdi) {
+		rc = -ENODEV;
+		goto out_put_vdev;
+	}
+
+	rc = tsm_guest_request(tdi, cmd->req, cmd->req_len, cmd->rsp, cmd->rsp_len, &fw_err);
+	if (rc)
+		goto out_put_tdi;
+
+	cmd->fw_err = fw_err;
+	rc = iommufd_ucmd_respond(ucmd, sizeof(*cmd));
+
+out_put_tdi:
+	tsm_tdi_put(tdi);
+out_put_vdev:
+	iommufd_put_object(ucmd->ictx, &vdev->obj);
+out_put_dev:
 	iommufd_put_object(ucmd->ictx, &idev->obj);
 out_put_viommu:
 	iommufd_put_object(ucmd->ictx, &viommu->obj);
