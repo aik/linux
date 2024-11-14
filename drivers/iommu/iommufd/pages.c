@@ -53,6 +53,7 @@
 #include <linux/overflow.h>
 #include <linux/slab.h>
 #include <linux/sched/mm.h>
+#include <linux/pagemap.h>
 
 #include "double_span.h"
 #include "io_pagetable.h"
@@ -850,6 +851,87 @@ static long pin_memfd_pages(struct pfn_reader_user *user, unsigned long start,
 	return npages_out;
 }
 
+static bool is_guest_memfd(struct file *file)
+{
+	struct address_space *mapping = file_inode(file)->i_mapping;
+
+	return mapping_inaccessible(mapping) && mapping_unevictable(mapping);
+}
+
+static struct folio *guest_memfd_get_pfn(struct file *file, unsigned long index,
+					 unsigned long *pfn, int *max_order)
+{
+	struct folio *folio;
+	int ret = 0;
+
+	folio = filemap_grab_folio(file_inode(file)->i_mapping, index);
+
+	if (IS_ERR(folio))
+		return folio;
+
+	if (folio_test_hwpoison(folio)) {
+		folio_unlock(folio);
+		folio_put(folio);
+		return ERR_PTR(-EHWPOISON);
+	}
+
+	*pfn = folio_pfn(folio) + (index & (folio_nr_pages(folio) - 1));
+	if (!max_order)
+		goto unlock_exit;
+
+	ret = folio_add_pins(folio, 1); /* Refs for unpin_user_page_range_dirty_lock->gup_put_folio(FOLL_PIN) */
+	folio_put(folio); /* Drop ref from filemap_grab_folio */
+
+unlock_exit:
+	folio_unlock(folio);
+	if (ret)
+		folio = ERR_PTR(ret);
+
+	return folio;
+}
+
+static long pin_guest_memfd_pages(struct pfn_reader_user *user, loff_t start, unsigned long npages,
+			       struct iopt_pages *pages)
+{
+	unsigned long offset = 0;
+	loff_t uptr = start;
+	long rc = 0;
+
+	for (unsigned long i = 0; i < npages; ++i, uptr += PAGE_SIZE) {
+		unsigned long gfn = 0, pfn = 0;
+		int max_order = 0;
+		struct folio *folio;
+
+		folio = guest_memfd_get_pfn(user->file, uptr >> PAGE_SHIFT, &pfn, &max_order);
+		if (IS_ERR(folio))
+			rc = PTR_ERR(folio);
+
+		if (rc == -EINVAL && i == 0) {
+			pr_err_once("Must be vfio mmio at gfn=%lx pfn=%lx, skipping\n", gfn, pfn);
+			return rc;
+		}
+
+		if (rc) {
+			pr_err("%s: %ld %ld %lx -> %lx\n", __func__,
+			       rc, i, (unsigned long) uptr, (unsigned long) pfn);
+			break;
+		}
+
+		if (i == 0)
+			offset = offset_in_folio(folio, start);
+
+		user->ufolios[i] = folio;
+	}
+
+	if (!rc) {
+		rc = npages;
+		user->ufolios_next = user->ufolios;
+		user->ufolios_offset = offset;
+	}
+
+	return rc;
+}
+
 static int pfn_reader_user_pin(struct pfn_reader_user *user,
 			       struct iopt_pages *pages,
 			       unsigned long start_index,
@@ -903,7 +985,10 @@ static int pfn_reader_user_pin(struct pfn_reader_user *user,
 
 	if (user->file) {
 		start = pages->start + (start_index * PAGE_SIZE);
-		rc = pin_memfd_pages(user, start, npages);
+		if (is_guest_memfd(user->file))
+			rc = pin_guest_memfd_pages(user, start, npages, pages);
+		else
+			rc = pin_memfd_pages(user, start, npages);
 	} else if (!remote_mm) {
 		uptr = (uintptr_t)(pages->uptr + start_index * PAGE_SIZE);
 		rc = pin_user_pages_fast(uptr, npages, user->gup_flags,
