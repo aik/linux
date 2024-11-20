@@ -43,6 +43,9 @@ obj-$(CONFIG_PCI_CMA)		+= cma.o cma.asn1.o
 $(obj)/cma.o:			$(obj)/cma.asn1.h
 $(obj)/cma.asn1.o:		$(obj)/cma.asn1.c $(obj)/cma.asn1.h
 
+tsm_pci-y			:= tsm.o
+obj-$(CONFIG_PCI_TSM)		+= tsm_pci.o
+
 # Endpoint library must be initialized before its users
 obj-$(CONFIG_PCI_ENDPOINT)	+= endpoint/
 
