@@ -100,6 +100,8 @@ static unsigned int __ioremap_check_encrypted(struct resource *res)
 	switch (res->desc) {
 	case IORES_DESC_NONE:
 	case IORES_DESC_RESERVED:
+		if (res->flags & IORESOURCE_VALIDATED)
+			return IORES_MAP_ENCRYPTED;
 		break;
 	default:
 		return IORES_MAP_ENCRYPTED;

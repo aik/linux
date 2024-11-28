@@ -503,6 +503,13 @@ int walk_mem_res(u64 start, u64 end, void *arg,
 {
 	unsigned long flags = IORESOURCE_MEM | IORESOURCE_BUSY;
 
+	int ret =  __walk_iomem_res_desc(start, end, flags, IORES_DESC_NONE, arg,
+				     func);
+	if (ret < 0)
+		return ret;
+
+	flags = IORESOURCE_MEM | IORESOURCE_VALIDATED;
+
 	return __walk_iomem_res_desc(start, end, flags, IORES_DESC_NONE, arg,
 				     func);
 }
@@ -1084,6 +1091,47 @@ int adjust_resource(struct resource *res, resource_size_t start,
 	return result;
 }
 EXPORT_SYMBOL(adjust_resource);
+
+int encrypt_resource(struct resource *res, unsigned flags)
+{
+	struct resource *p;
+	int result = 0;
+
+	if (!res)
+		return -EINVAL;
+
+	write_lock(&resource_lock);
+
+	for_each_resource(&iomem_resource, p, false) {
+		/* If we passed the resource we are looking for, stop */
+		if (p->start > res->end) {
+			p = NULL;
+			break;
+		}
+
+		/* Skip until we find a range that matches what we look for */
+		if (p->end < res->start)
+			continue;
+
+		if (p->start == res->start && p->end == res->end) {
+			if ((p->flags & res->flags) != res->flags)
+				p = NULL;
+			break;
+		}
+	}
+
+	if (p) {
+		p->flags = (p->flags & ~(IORESOURCE_VALIDATED)) | flags;
+		res->flags = (res->flags & ~(IORESOURCE_VALIDATED)) | flags;
+	} else {
+		result = -EINVAL;
+	}
+
+	write_unlock(&resource_lock);
+
+	return result;
+}
+EXPORT_SYMBOL(encrypt_resource);
 
 static void __init
 __reserve_region_with_split(struct resource *root, resource_size_t start,
