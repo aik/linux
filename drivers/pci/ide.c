@@ -10,6 +10,14 @@
 #include <linux/bitfield.h>
 #include "pci.h"
 
+static int __pci_write_config_dword(const struct pci_dev *dev, int where,
+					 u32 val, const char *f, int n)
+{
+	pci_info(dev, "[%x] Writing %x at %s:%d\n", where, val, f, n);
+	return pci_write_config_dword(dev, where, val);
+}
+#define pci_write_config_dword(d, w, v)  __pci_write_config_dword((d), (w), (v), __func__, __LINE__)
+
 static int sel_ide_offset(u16 cap, int stream_id, int nr_ide_mem)
 {
 	return cap + stream_id * PCI_IDE_SELECTIVE_BLOCK_SIZE(nr_ide_mem);
@@ -50,10 +58,10 @@ void pci_ide_init(struct pci_dev *pdev)
 	else
 		sel_ide_cap = ide_cap + PCI_IDE_LINK_STREAM;
 
-	for (int i = 0; i < PCI_IDE_CAP_SELECTIVE_STREAMS_NUM(val); i++) {
+	for (int i = 0; i < PCI_IDE_CAP_SELECTIVE_STREAMS_NUM(val) + 1; i++) {
 		if (i == 0) {
 			pci_read_config_dword(pdev, sel_ide_cap, &val);
-			nr_ide_mem = PCI_IDE_SEL_CAP_ASSOC_NUM(val);
+			nr_ide_mem = PCI_IDE_SEL_CAP_ASSOC_NUM(val) + 1;
 		} else {
 			int offset = sel_ide_offset(sel_ide_cap, i, nr_ide_mem);
 
@@ -118,7 +126,7 @@ void pci_set_nr_ide_streams(struct pci_host_bridge *hb, int nr)
 	hb->nr_ide_streams = nr;
 	sysfs_update_group(&hb->dev.kobj, &pci_ide_attr_group);
 }
-EXPORT_SYMBOL_NS_GPL(pci_set_nr_ide_streams, PCI_IDE);
+EXPORT_SYMBOL_NS_GPL(pci_set_nr_ide_streams, "PCI_IDE");
 
 void pci_init_host_bridge_ide(struct pci_host_bridge *hb)
 {
@@ -148,6 +156,10 @@ void pci_ide_stream_probe(struct pci_dev *pdev, struct pci_ide *ide)
 	else
 		ide->devid_end = ide->devid_start;
 
+	/* Enable everything into the rootport by default */
+	ide->rpid_start = 0;
+	ide->rpid_end = 0xffff;
+
 	/* TODO: address association probing... */
 }
 EXPORT_SYMBOL_GPL(pci_ide_stream_probe);
@@ -160,7 +172,7 @@ static void __pci_ide_stream_teardown(struct pci_dev *pdev, struct pci_ide *ide)
 			     pdev->nr_ide_mem);
 
 	pci_write_config_dword(pdev, pos + PCI_IDE_SEL_CTL, 0);
-	for (int i = ide->nr_mem - 1; i >= 0; i--) {
+	for (int i = min(ide->nr_mem, pdev->nr_ide_mem) - 1; i >= 0; i--) {
 		pci_write_config_dword(pdev, pos + PCI_IDE_SEL_ADDR_3(i), 0);
 		pci_write_config_dword(pdev, pos + PCI_IDE_SEL_ADDR_2(i), 0);
 		pci_write_config_dword(pdev, pos + PCI_IDE_SEL_ADDR_1(i), 0);
@@ -169,7 +181,7 @@ static void __pci_ide_stream_teardown(struct pci_dev *pdev, struct pci_ide *ide)
         pci_write_config_dword(pdev, pos + PCI_IDE_SEL_RID_1, 0);
 }
 
-static void __pci_ide_stream_setup(struct pci_dev *pdev, struct pci_ide *ide)
+static int __pci_ide_stream_setup(struct pci_dev *pdev, struct pci_ide *ide, bool mem, bool rp)
 {
 	int pos;
 	u32 val;
@@ -177,13 +189,19 @@ static void __pci_ide_stream_setup(struct pci_dev *pdev, struct pci_ide *ide)
 	pos = sel_ide_offset(pdev->sel_ide_cap, ide->stream_id,
 			     pdev->nr_ide_mem);
 
-	val = FIELD_PREP(PCI_IDE_SEL_RID_1_LIMIT_MASK, ide->devid_end);
+	val = FIELD_PREP(PCI_IDE_SEL_RID_1_LIMIT_MASK, rp ? ide->rpid_end : ide->devid_end);
 	pci_write_config_dword(pdev, pos + PCI_IDE_SEL_RID_1, val);
 
 	val = FIELD_PREP(PCI_IDE_SEL_RID_2_VALID, 1) |
-	      FIELD_PREP(PCI_IDE_SEL_RID_2_BASE_MASK, ide->devid_start) |
+	      FIELD_PREP(PCI_IDE_SEL_RID_2_BASE_MASK, rp ? ide->rpid_start : ide->devid_start) |
 	      FIELD_PREP(PCI_IDE_SEL_RID_2_SEG_MASK, ide->domain);
 	pci_write_config_dword(pdev, pos + PCI_IDE_SEL_RID_2, val);
+
+	if (!mem)
+		return 0;
+
+	if (ide->nr_mem > pdev->nr_ide_mem)
+		return -EINVAL;
 
 	for (int i = 0; i < ide->nr_mem; i++) {
 		val = FIELD_PREP(PCI_IDE_SEL_ADDR_1_VALID, 1) |
@@ -201,6 +219,8 @@ static void __pci_ide_stream_setup(struct pci_dev *pdev, struct pci_ide *ide)
 		val = upper_32_bits(ide->mem[i].start);
 		pci_write_config_dword(pdev, pos + PCI_IDE_SEL_ADDR_3(i), val);
 	}
+
+	return 0;
 }
 
 /*
@@ -248,10 +268,14 @@ int pci_ide_stream_setup(struct pci_dev *pdev, struct pci_ide *ide,
 			goto err;
 		}
 
-	__pci_ide_stream_setup(pdev, ide);
-	if (flags & PCI_IDE_SETUP_ROOT_PORT)
-		__pci_ide_stream_setup(rp, ide);
+	rc = __pci_ide_stream_setup(pdev, ide, true, false);
+	if (!rc && (flags & PCI_IDE_SETUP_ROOT_PORT))
+		rc = __pci_ide_stream_setup(rp, ide, !!(flags & PCI_IDE_SETUP_ROOT_PORT_MEM), true);
 
+	if (rc)
+		goto err;
+
+	ide->flags = flags;
 	return 0;
 err:
 	for (; mem >= 0; mem--)
@@ -268,6 +292,7 @@ EXPORT_SYMBOL_GPL(pci_ide_stream_setup);
 
 void pci_ide_enable_stream(struct pci_dev *pdev, struct pci_ide *ide)
 {
+	struct pci_dev *rp = pcie_find_root_port(pdev);
 	int pos;
 	u32 val;
 
@@ -276,13 +301,26 @@ void pci_ide_enable_stream(struct pci_dev *pdev, struct pci_ide *ide)
 
 	val = FIELD_PREP(PCI_IDE_SEL_CTL_ID_MASK, ide->stream_id) |
 	      FIELD_PREP(PCI_IDE_SEL_CTL_DEFAULT, 1);
+	val |= FIELD_PREP(PCI_IDE_SEL_CTL_EN, 1);
+	/* there is rootport and pdev is not it */
+	if (rp && rp != pdev)
+		val |= ide->dev_sel_ctl;
+	else
+		val |= ide->rootport_sel_ctl;
 	pci_write_config_dword(pdev, pos + PCI_IDE_SEL_CTL, val);
+
+	if (ide->flags & PCI_IDE_SETUP_ROOT_PORT && rp && rp != pdev)
+		pci_ide_enable_stream(rp, ide);
 }
 EXPORT_SYMBOL_GPL(pci_ide_enable_stream);
 
 void pci_ide_disable_stream(struct pci_dev *pdev, struct pci_ide *ide)
 {
+	struct pci_dev *rp = pcie_find_root_port(pdev);
 	int pos;
+
+	if (ide->flags & PCI_IDE_SETUP_ROOT_PORT && rp && rp != pdev)
+		pci_ide_disable_stream(rp, ide);
 
 	pos = sel_ide_offset(pdev->sel_ide_cap, ide->stream_id,
 			     pdev->nr_ide_mem);
@@ -291,14 +329,13 @@ void pci_ide_disable_stream(struct pci_dev *pdev, struct pci_ide *ide)
 }
 EXPORT_SYMBOL_GPL(pci_ide_disable_stream);
 
-void pci_ide_stream_teardown(struct pci_dev *pdev, struct pci_ide *ide,
-			     enum pci_ide_flags flags)
+void pci_ide_stream_teardown(struct pci_dev *pdev, struct pci_ide *ide)
 {
 	struct pci_host_bridge *hb = pci_find_host_bridge(pdev->bus);
 	struct pci_dev *rp = pcie_find_root_port(pdev);
 
 	__pci_ide_stream_teardown(pdev, ide);
-	if (flags & PCI_IDE_SETUP_ROOT_PORT)
+	if (ide->flags & PCI_IDE_SETUP_ROOT_PORT)
 		__pci_ide_stream_teardown(rp, ide);
 
 	for (int i = ide->nr_mem - 1; i >= 0; i--)
@@ -309,3 +346,24 @@ void pci_ide_stream_teardown(struct pci_dev *pdev, struct pci_ide *ide,
 	clear_bit_unlock(ide->stream_id, hb->ide_stream_ids);
 }
 EXPORT_SYMBOL_GPL(pci_ide_stream_teardown);
+
+static int __pci_ide_stream_state(struct pci_dev *pdev, struct pci_ide *ide, u32 *status)
+{
+	int pos = sel_ide_offset(pdev->sel_ide_cap, ide->stream_id,
+				 pdev->nr_ide_mem);
+
+	return pci_read_config_dword(pdev, pos + PCI_IDE_SEL_STS, status);
+}
+
+int pci_ide_stream_state(struct pci_dev *pdev, struct pci_ide *ide, u32 *status, u32 *rpstatus)
+{
+	int ret = __pci_ide_stream_state(pdev, ide, status);
+
+	if (!ret && ide->flags & PCI_IDE_SETUP_ROOT_PORT) {
+		struct pci_dev *rp = pcie_find_root_port(pdev);
+
+		ret = __pci_ide_stream_state(rp, ide, rpstatus);
+	}
+	return ret;
+}
+EXPORT_SYMBOL_GPL(pci_ide_stream_state);

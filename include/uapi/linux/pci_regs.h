@@ -1293,9 +1293,9 @@
 /* Selective IDE Address Association Register Block, up to PCI_IDE_SEL_CAP_ASSOC_NUM */
 #define  PCI_IDE_SEL_ADDR_1(x)			(20 + (x) * 12)
 #define   PCI_IDE_SEL_ADDR_1_VALID		0x1
-#define   PCI_IDE_SEL_ADDR_1_BASE_LOW_MASK	0x000fff0
+#define   PCI_IDE_SEL_ADDR_1_BASE_LOW_MASK	0x000fff00
 #define   PCI_IDE_SEL_ADDR_1_BASE_LOW_SHIFT	20
-#define   PCI_IDE_SEL_ADDR_1_LIMIT_LOW_MASK 	0xfff0000
+#define   PCI_IDE_SEL_ADDR_1_LIMIT_LOW_MASK 	0xfff00000
 #define   PCI_IDE_SEL_ADDR_1_LIMIT_LOW_SHIFT	20
 /* IDE Address Association Register 2 is "Memory Limit Upper" */
 /* IDE Address Association Register 3 is "Memory Base Upper" */

@@ -562,6 +562,9 @@ struct pci_dev {
 	u8		tph_mode;	/* TPH mode */
 	u8		tph_req_type;	/* TPH requester type */
 #endif
+#if defined(CONFIG_PCI_IDE) || defined(CONFIG_PCI_IDE_MODULE)
+	struct pci_ide	*ide;
+#endif
 };
 
 static inline struct pci_dev *pci_physfn(struct pci_dev *dev)
