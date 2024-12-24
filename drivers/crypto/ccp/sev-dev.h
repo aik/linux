@@ -43,6 +43,8 @@ struct sev_misc_dev {
 	struct miscdevice misc;
 };
 
+struct sev_tio_status;
+
 struct sev_device {
 	struct device *dev;
 	struct psp_device *psp;
@@ -71,7 +73,13 @@ struct sev_device {
 	struct fw_upload *fwl;
 	bool fw_cancel;
 #endif /* CONFIG_FW_UPLOAD */
+
 	bool tio_en;
+#if defined(CONFIG_PCI_TSM) || defined(CONFIG_PCI_TSM_MODULE)
+	struct tsm_host_subsys *tsm;
+	struct tsm_bus_subsys *tsm_bus;
+	struct sev_tio_status *tio_status;
+#endif
 };
 
 bool sev_version_greater_or_equal(u8 maj, u8 min);
@@ -101,5 +109,15 @@ static inline void sev_snp_dev_init_firmware_upload(struct sev_device *sev) { }
 static inline void sev_snp_destroy_firmware_upload(struct sev_device *sev) { }
 static inline int sev_snp_synthetic_error(struct sev_device *sev, int *psp_ret) { return 0; }
 #endif /* CONFIG_CRYPTO_DEV_SP_PSP_FW_UPLOAD */
+
+#if defined(CONFIG_PCI_TSM) || defined(CONFIG_PCI_TSM_MODULE)
+void sev_tsm_init(struct sev_device *sev);
+void sev_tsm_uninit(struct sev_device *sev);
+int sev_tio_cmd_buffer_len(int cmd);
+#else
+static inline void sev_tsm_init(struct sev_device *sev){}
+static inline void sev_tsm_uninit(struct sev_device *sev){}
+static inline int sev_tio_cmd_buffer_len(int cmd){ return 0; }
+#endif
 
 #endif /* __SEV_DEV_H */

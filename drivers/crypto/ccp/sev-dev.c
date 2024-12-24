@@ -37,6 +37,7 @@
 
 #include "psp-dev.h"
 #include "sev-dev.h"
+#include "sev-dev-tio.h"
 
 #define DEVICE_NAME		"sev"
 #define SEV_FW_FILE		"amd/sev.fw"
@@ -234,7 +235,7 @@ static int sev_cmd_buffer_len(int cmd)
 	case SEV_CMD_SNP_COMMIT:		return sizeof(struct sev_data_snp_commit);
 	case SEV_CMD_SNP_FEATURE_INFO:		return sizeof(struct sev_data_snp_feature_info);
 	case SEV_CMD_SNP_DOWNLOAD_FIRMWARE_EX:	return sizeof(struct sev_data_download_firmware_ex);
-	default:				return 0;
+	default:				return sev_tio_cmd_buffer_len(cmd);
 	}
 
 	return 0;
@@ -2631,6 +2632,8 @@ void sev_pci_init(void)
 
 	atomic_notifier_chain_register(&panic_notifier_list,
 				       &snp_panic_notifier);
+	sev_tsm_init(sev);
+
 	return;
 
 err:
@@ -2647,6 +2650,11 @@ void sev_pci_exit(void)
 		return;
 
 	sev_firmware_shutdown(sev);
+	/*
+	 * sev_tsm_uninit needs to clear tio_en after sev_firmware_shutdown to let it
+	 * do proper cleanup.
+	 */
+	sev_tsm_uninit(sev);
 
 	atomic_notifier_chain_unregister(&panic_notifier_list,
 					 &snp_panic_notifier);

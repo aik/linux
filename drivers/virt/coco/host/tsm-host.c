@@ -265,7 +265,7 @@ static char *spdm_algos_to_str(u64 algos, char *buf, size_t len)
 
 	buf[0] = 0;
 #define __ALGO(x) do {								\
-		if ((n < len) && (algos & (1ULL << (TSM_TDI_SPDM_ALGOS_##x))))	\
+		if ((n < len) && (algos & (1ULL << (TSM_SPDM_ALGOS_##x))))	\
 			n += snprintf(buf + n, len - n, #x" ");			\
 	} while (0)
 
@@ -287,7 +287,6 @@ static const char *tdisp_state_to_str(enum tsm_tdisp_state state)
 {
 	switch (state) {
 #define __ST(x) case TDISP_STATE_##x: return #x
-	case TDISP_STATE_UNAVAIL: return "TDISP state unavailable";
 	__ST(CONFIG_UNLOCKED);
 	__ST(CONFIG_LOCKED);
 	__ST(RUN);
@@ -473,7 +472,6 @@ void tsm_tdi_unbind(struct tsm_tdi *tdi)
 	}
 
 	tdi->guest_rid = 0;
-	tdi->dev.parent->tdi_enabled = false;
 }
 EXPORT_SYMBOL_GPL(tsm_tdi_unbind);
 
