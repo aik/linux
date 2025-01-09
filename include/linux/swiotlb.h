@@ -173,6 +173,14 @@ static inline bool is_swiotlb_force_bounce(struct device *dev)
 {
 	struct io_tlb_mem *mem = dev->dma_io_tlb_mem;
 
+#if defined(CONFIG_TSM_GUEST) || defined(CONFIG_TSM_GUEST_MODULE)
+	if (dev->tdi_enabled) {
+		dev_warn_once(dev, "(TIO) Disable SWIOTLB");
+		if (!dev->tdi_validated)
+			dev_warn(dev, "TDI is not validated");
+		return false;
+	}
+#endif
 	return mem && mem->force_bounce;
 }
 
