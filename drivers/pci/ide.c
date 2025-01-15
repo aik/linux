@@ -26,7 +26,7 @@ static int sel_ide_offset(u16 cap, int stream_id, int nr_ide_mem)
 void pci_ide_init(struct pci_dev *pdev)
 {
 	u16 ide_cap, sel_ide_cap;
-	int nr_ide_mem = 0;
+	int nr_ide_mem = 0, i, link_num, sel_num, offset;
 	u32 val = 0;
 
 	if (!pci_is_pcie(pdev))
@@ -41,6 +41,7 @@ void pci_ide_init(struct pci_dev *pdev)
 	 * require consistent number of address association blocks
 	 */
 	pci_read_config_dword(pdev, ide_cap + PCI_IDE_CAP, &val);
+
 	if ((val & PCI_IDE_CAP_SELECTIVE) == 0)
 		return;
 
@@ -51,6 +52,9 @@ void pci_ide_init(struct pci_dev *pdev)
 			return;
 	}
 
+	link_num = PCI_IDE_CAP_LINK_TC_NUM(val) + 1;
+	sel_num = PCI_IDE_CAP_SELECTIVE_STREAMS_NUM(val) + 1;
+
 	if (val & PCI_IDE_CAP_LINK)
 		sel_ide_cap = ide_cap + PCI_IDE_LINK_STREAM +
 			      (PCI_IDE_CAP_LINK_TC_NUM(val) + 1) *
@@ -58,12 +62,13 @@ void pci_ide_init(struct pci_dev *pdev)
 	else
 		sel_ide_cap = ide_cap + PCI_IDE_LINK_STREAM;
 
-	for (int i = 0; i < PCI_IDE_CAP_SELECTIVE_STREAMS_NUM(val) + 1; i++) {
+	for (i = 0; i < PCI_IDE_CAP_SELECTIVE_STREAMS_NUM(val) + 1; i++) {
 		if (i == 0) {
+			offset = 0;
 			pci_read_config_dword(pdev, sel_ide_cap, &val);
 			nr_ide_mem = PCI_IDE_SEL_CAP_ASSOC_NUM(val) + 1;
 		} else {
-			int offset = sel_ide_offset(sel_ide_cap, i, nr_ide_mem);
+			offset = sel_ide_offset(sel_ide_cap, i, nr_ide_mem);
 
 			pci_read_config_dword(pdev, offset, &val);
 
@@ -75,6 +80,24 @@ void pci_ide_init(struct pci_dev *pdev)
 				pci_info(pdev, "Unsupported Selective Stream %d capability\n", i);
 				return;
 			}
+		}
+
+		/* Some devices insist on streamid to be unique even for not enabled streams */
+		val &= ~PCI_IDE_SEL_CTL_ID_MASK;
+		val |= FIELD_PREP(PCI_IDE_SEL_CTL_ID_MASK, i);
+		pci_write_config_dword(pdev, offset + PCI_IDE_SEL_CTL, val);
+	}
+
+	if (val & PCI_IDE_CAP_LINK) {
+		/* Some devices insist on streamid to be unique even for not enabled streams */
+		for (i = 0; i < link_num; ++i) {
+			offset = ide_cap + PCI_IDE_LINK_STREAM + i * PCI_IDE_LINK_BLOCK_SIZE;
+
+			pci_read_config_dword(pdev, offset, &val);
+			val &= ~PCI_IDE_LINK_CTL_ID_MASK;
+			val |= FIELD_PREP(PCI_IDE_LINK_CTL_ID_MASK, i + sel_num);
+
+			pci_write_config_dword(pdev, offset, val);
 		}
 	}
 
