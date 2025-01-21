@@ -6464,3 +6464,9 @@ void kvm_exit(void)
 	kvm_irqfd_exit();
 }
 EXPORT_SYMBOL_GPL(kvm_exit);
+
+u64 kvm_arch_tsm_get_vmid(struct kvm *kvm)
+{
+	return static_call(kvm_x86_tsm_get_vmid)(kvm);
+}
+EXPORT_SYMBOL_GPL(kvm_arch_tsm_get_vmid);

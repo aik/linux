@@ -4998,6 +4998,16 @@ static void *svm_alloc_apic_backing_page(struct kvm_vcpu *vcpu)
 	return page_address(page);
 }
 
+static u64 svm_tsm_get_vmid(struct kvm *kvm)
+{
+	struct kvm_sev_info *sev = &to_kvm_svm(kvm)->sev_info;
+
+	if (!sev->es_active)
+		return 0;
+
+	return ((u64) sev->snp_context) | sev->asid;
+}
+
 static struct kvm_x86_ops svm_x86_ops __initdata = {
 	.name = KBUILD_MODNAME,
 
@@ -5137,6 +5147,8 @@ static struct kvm_x86_ops svm_x86_ops __initdata = {
 	.gmem_prepare = sev_gmem_prepare,
 	.gmem_invalidate = sev_gmem_invalidate,
 	.private_max_mapping_level = sev_private_max_mapping_level,
+
+	.tsm_get_vmid = svm_tsm_get_vmid,
 };
 
 /*

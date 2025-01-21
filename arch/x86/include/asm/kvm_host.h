@@ -1875,6 +1875,8 @@ struct kvm_x86_ops {
 	int (*gmem_prepare)(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn, int max_order);
 	void (*gmem_invalidate)(kvm_pfn_t start, kvm_pfn_t end);
 	int (*private_max_mapping_level)(struct kvm *kvm, kvm_pfn_t pfn);
+
+	u64 (*tsm_get_vmid)(struct kvm *kvm);
 };
 
 struct kvm_x86_nested_ops {
