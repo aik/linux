@@ -449,8 +449,10 @@ static struct page *__snp_alloc_firmware_pages(gfp_t gfp_mask, int order)
 		return page;
 
 	paddr = __pa((unsigned long)page_address(page));
-	if (rmp_mark_pages_firmware(paddr, npages, false))
+	if (rmp_mark_pages_firmware(paddr, npages, false)) {
+		free_page((unsigned long)page_to_virt(page));
 		return NULL;
+	}
 
 	return page;
 }
