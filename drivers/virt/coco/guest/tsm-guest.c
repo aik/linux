@@ -2,6 +2,7 @@
 
 #include <linux/module.h>
 #include <linux/tsm.h>
+#include <linux/pci.h>
 
 #define DRIVER_VERSION	"0.1"
 #define DRIVER_AUTHOR	"aik@amd.com"
@@ -239,6 +240,36 @@ static const struct attribute_group tdi_group = {
 	.attrs = tdi_attrs,
 };
 
+/* In case BUS_NOTIFY_PCI_BUS_MASTER is no good, a driver can call pci_dev_tdi_validate() */
+int pci_dev_tdi_validate(struct pci_dev *pdev, bool invalidate)
+{
+	struct tsm_tdi *tdi = tsm_tdi_get(&pdev->dev);
+	int ret;
+
+	if (!tdi)
+		return -EFAULT;
+
+	ret = tsm_tdi_validate(tdi, TDI_VALIDATE_DMA | TDI_VALIDATE_MMIO, invalidate);
+
+	tsm_tdi_put(tdi);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(pci_dev_tdi_validate);
+
+static int tsm_guest_pci_bus_notifier(struct notifier_block *nb, unsigned long action, void *data)
+{
+	switch (action) {
+	case BUS_NOTIFY_UNBOUND_DRIVER:
+		pci_dev_tdi_validate(to_pci_dev(data), true);
+		break;
+        case BUS_NOTIFY_PCI_BUS_MASTER:
+                pci_dev_tdi_validate(to_pci_dev(data), false);
+                break;
+	}
+
+	return NOTIFY_OK;
+}
+
 struct tsm_guest_subsys *tsm_guest_register(struct device *parent,
 					    struct tsm_vm_ops *vmops,
 					    void *private_data)
@@ -256,12 +287,16 @@ struct tsm_guest_subsys *tsm_guest_register(struct device *parent,
 	gsubsys->ops = vmops;
 	gsubsys->private_data = private_data;
 
+	gsubsys->notifier.notifier_call = tsm_guest_pci_bus_notifier;
+	bus_register_notifier(&pci_bus_type, &gsubsys->notifier);
+
 	return gsubsys;
 }
 EXPORT_SYMBOL_GPL(tsm_guest_register);
 
 void tsm_guest_unregister(struct tsm_guest_subsys *gsubsys)
 {
+	bus_unregister_notifier(&pci_bus_type, &gsubsys->notifier);
 	tsm_unregister(&gsubsys->base);
 }
 EXPORT_SYMBOL_GPL(tsm_guest_unregister);
