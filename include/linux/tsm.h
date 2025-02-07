@@ -353,6 +353,20 @@ struct tsm_hv_ops {
 	int (*tdi_status)(struct tsm_tdi *tdi, struct tsm_tdi_status *ts);
 };
 
+/* featuremask for tdi_validate */
+/* TODO: use it */
+#define TDI_VALIDATE_DMA	BIT(0)
+#define TDI_VALIDATE_MMIO	BIT(1)
+
+struct tsm_vm_ops {
+	int (*tdi_validate)(struct tsm_tdi *tdi, unsigned featuremask,
+			    bool invalidate, void *private_data);
+	int (*tdi_mmio_config)(struct tsm_tdi *tdi, u64 start, u64 size,
+			       bool tee, void *private_data);
+	int (*tdi_status)(struct tsm_tdi *tdi, void *private_data,
+			  struct tsm_tdi_status *ts);
+};
+
 struct tsm_subsys {
 	struct device dev;
 	struct list_head tdi_head;
@@ -372,6 +386,12 @@ struct tsm_host_subsys;
 struct tsm_host_subsys *tsm_host_register(struct device *parent,
 					  struct tsm_hv_ops *hvops,
 					  void *private_data);
+struct tsm_guest_subsys;
+struct tsm_guest_subsys *tsm_guest_register(struct device *parent,
+					    struct tsm_vm_ops *vmops,
+					    void *private_data);
+void tsm_guest_unregister(struct tsm_guest_subsys *gsubsys);
+
 struct tsm_dev *tsm_dev_get(struct device *dev);
 void tsm_dev_put(struct tsm_dev *tdev);
 struct tsm_tdi *tsm_tdi_get(struct device *dev);

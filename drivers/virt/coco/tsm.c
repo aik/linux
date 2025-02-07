@@ -442,6 +442,8 @@ int tsm_tdi_init(struct tsm_dev *tdev, struct device *parent)
 		goto free_exit;
 
 	tdi->tdev = tdev;
+	tdi->dev.parent->tdi_enabled = true;
+	tdi->dev.parent->tdi_validated = false;
 
 	return 0;
 

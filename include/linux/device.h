@@ -843,6 +843,10 @@ struct device {
 #ifdef CONFIG_IOMMU_DMA
 	bool			dma_iommu:1;
 #endif
+#if defined(CONFIG_TSM_GUEST) || defined(CONFIG_TSM_GUEST_MODULE)
+	bool			tdi_enabled:1;
+	bool			tdi_validated:1;
+#endif
 };
 
 /**

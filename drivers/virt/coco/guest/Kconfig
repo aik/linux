@@ -5,3 +5,6 @@
 config TSM_REPORTS
 	select CONFIGFS_FS
 	tristate
+
+config TSM_GUEST
+	tristate

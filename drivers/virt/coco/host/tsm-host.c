@@ -472,6 +472,7 @@ void tsm_tdi_unbind(struct tsm_tdi *tdi)
 	}
 
 	tdi->guest_rid = 0;
+	tdi->dev.parent->tdi_enabled = false;
 }
 EXPORT_SYMBOL_GPL(tsm_tdi_unbind);
 
