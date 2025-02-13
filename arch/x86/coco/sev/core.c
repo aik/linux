@@ -2855,19 +2855,8 @@ struct snp_msg_desc *snp_msg_alloc(void)
 	if (!mdesc->response)
 		goto e_free_request;
 
-	mdesc->certs_data = snp_alloc_shared_pages(SEV_FW_BLOB_MAX_SIZE);
-	if (!mdesc->certs_data)
-		goto e_free_response;
-
-	/* initial the input address for guest request */
-	mdesc->input.req_gpa = __pa(mdesc->request);
-	mdesc->input.resp_gpa = __pa(mdesc->response);
-	mdesc->input.data_gpa = __pa(mdesc->certs_data);
-
 	return mdesc;
 
-e_free_response:
-	snp_free_shared_pages(mdesc->response, sizeof(struct snp_guest_msg));
 e_free_request:
 	snp_free_shared_pages(mdesc->request, sizeof(struct snp_guest_msg));
 e_unmap:
@@ -2887,7 +2876,6 @@ void snp_msg_free(struct snp_msg_desc *mdesc)
 	kfree(mdesc->ctx);
 	snp_free_shared_pages(mdesc->response, sizeof(struct snp_guest_msg));
 	snp_free_shared_pages(mdesc->request, sizeof(struct snp_guest_msg));
-	snp_free_shared_pages(mdesc->certs_data, SEV_FW_BLOB_MAX_SIZE);
 	iounmap((__force void __iomem *)mdesc->secrets);
 
 	memset(mdesc, 0, sizeof(*mdesc));
@@ -3066,7 +3054,7 @@ retry_request:
 		 * order to increment the sequence number and thus avoid
 		 * IV reuse.
 		 */
-		override_npages = mdesc->input.data_npages;
+		override_npages = input->data_npages;
 		exit_code	= SVM_VMGEXIT_GUEST_REQUEST;
 
 		/*
@@ -3122,7 +3110,7 @@ retry_request:
 	}
 
 	if (override_npages)
-		mdesc->input.data_npages = override_npages;
+		input->data_npages = override_npages;
 
 	return rc;
 }
@@ -3160,7 +3148,12 @@ int snp_send_guest_request(struct snp_msg_desc *mdesc, struct snp_guest_req *req
 	 */
 	memcpy(mdesc->request, &mdesc->secret_request, sizeof(mdesc->secret_request));
 
-	rc = __handle_guest_request(mdesc, req->exit_code, &mdesc->input, exitinfo2);
+	/* initial the input address for guest request */
+	req->input.req_gpa = __pa(mdesc->request);
+	req->input.resp_gpa = __pa(mdesc->response);
+	req->input.data_gpa = req->data ? __pa(req->data) : 0;
+
+	rc = __handle_guest_request(mdesc, req->exit_code, &req->input, exitinfo2);
 	if (rc) {
 		if (rc == -EIO &&
 		    *exitinfo2 == SNP_GUEST_VMM_ERR(SNP_GUEST_VMM_ERR_INVALID_LEN))
