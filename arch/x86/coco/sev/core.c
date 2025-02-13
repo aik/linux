@@ -2717,7 +2717,7 @@ static int __init sev_sysfs_init(void)
 arch_initcall(sev_sysfs_init);
 #endif // CONFIG_SYSFS
 
-static void free_shared_pages(void *buf, size_t sz)
+void snp_free_shared_pages(void *buf, size_t sz)
 {
 	unsigned int npages = PAGE_ALIGN(sz) >> PAGE_SHIFT;
 	int ret;
@@ -2733,8 +2733,9 @@ static void free_shared_pages(void *buf, size_t sz)
 
 	__free_pages(virt_to_page(buf), get_order(sz));
 }
+EXPORT_SYMBOL_GPL(snp_free_shared_pages);
 
-static void *alloc_shared_pages(size_t sz)
+void *snp_alloc_shared_pages(size_t sz)
 {
 	unsigned int npages = PAGE_ALIGN(sz) >> PAGE_SHIFT;
 	struct page *page;
@@ -2753,6 +2754,7 @@ static void *alloc_shared_pages(size_t sz)
 
 	return page_address(page);
 }
+EXPORT_SYMBOL_GPL(snp_alloc_shared_pages);
 
 static u8 *get_vmpck(int id, struct snp_secrets_page *secrets, u32 **seqno)
 {
@@ -2845,15 +2847,15 @@ struct snp_msg_desc *snp_msg_alloc(void)
 	mdesc->secrets = (__force struct snp_secrets_page *)mem;
 
 	/* Allocate the shared page used for the request and response message. */
-	mdesc->request = alloc_shared_pages(sizeof(struct snp_guest_msg));
+	mdesc->request = snp_alloc_shared_pages(sizeof(struct snp_guest_msg));
 	if (!mdesc->request)
 		goto e_unmap;
 
-	mdesc->response = alloc_shared_pages(sizeof(struct snp_guest_msg));
+	mdesc->response = snp_alloc_shared_pages(sizeof(struct snp_guest_msg));
 	if (!mdesc->response)
 		goto e_free_request;
 
-	mdesc->certs_data = alloc_shared_pages(SEV_FW_BLOB_MAX_SIZE);
+	mdesc->certs_data = snp_alloc_shared_pages(SEV_FW_BLOB_MAX_SIZE);
 	if (!mdesc->certs_data)
 		goto e_free_response;
 
@@ -2865,9 +2867,9 @@ struct snp_msg_desc *snp_msg_alloc(void)
 	return mdesc;
 
 e_free_response:
-	free_shared_pages(mdesc->response, sizeof(struct snp_guest_msg));
+	snp_free_shared_pages(mdesc->response, sizeof(struct snp_guest_msg));
 e_free_request:
-	free_shared_pages(mdesc->request, sizeof(struct snp_guest_msg));
+	snp_free_shared_pages(mdesc->request, sizeof(struct snp_guest_msg));
 e_unmap:
 	iounmap(mem);
 e_free_mdesc:
@@ -2883,9 +2885,9 @@ void snp_msg_free(struct snp_msg_desc *mdesc)
 		return;
 
 	kfree(mdesc->ctx);
-	free_shared_pages(mdesc->response, sizeof(struct snp_guest_msg));
-	free_shared_pages(mdesc->request, sizeof(struct snp_guest_msg));
-	free_shared_pages(mdesc->certs_data, SEV_FW_BLOB_MAX_SIZE);
+	snp_free_shared_pages(mdesc->response, sizeof(struct snp_guest_msg));
+	snp_free_shared_pages(mdesc->request, sizeof(struct snp_guest_msg));
+	snp_free_shared_pages(mdesc->certs_data, SEV_FW_BLOB_MAX_SIZE);
 	iounmap((__force void __iomem *)mdesc->secrets);
 
 	memset(mdesc, 0, sizeof(*mdesc));

@@ -478,6 +478,8 @@ void snp_kexec_begin(void);
 int snp_msg_init(struct snp_msg_desc *mdesc, int vmpck_id);
 struct snp_msg_desc *snp_msg_alloc(void);
 void snp_msg_free(struct snp_msg_desc *mdesc);
+void *snp_alloc_shared_pages(size_t sz);
+void snp_free_shared_pages(void *buf, size_t sz);
 int snp_send_guest_request(struct snp_msg_desc *mdesc, struct snp_guest_req *req,
 			   u64 *exitinfo2);
 
@@ -522,6 +524,8 @@ static inline void snp_kexec_begin(void) { }
 static inline int snp_msg_init(struct snp_msg_desc *mdesc, int vmpck_id) { return -1; }
 static inline struct snp_msg_desc *snp_msg_alloc(void) { return NULL; }
 static inline void snp_msg_free(struct snp_msg_desc *mdesc) { }
+static inline void *snp_alloc_shared_pages(size_t sz) { return NULL; }
+static inline void snp_free_shared_pages(void *buf, size_t sz) { }
 static inline int snp_send_guest_request(struct snp_msg_desc *mdesc, struct snp_guest_req *req,
 					 u64 *exitinfo2) { return -ENODEV; }
 static inline void __init snp_secure_tsc_prepare(void) { }
