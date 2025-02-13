@@ -2564,8 +2564,8 @@ int snp_issue_svsm_attest_req(u64 call_id, struct svsm_call *call,
 }
 EXPORT_SYMBOL_GPL(snp_issue_svsm_attest_req);
 
-static int snp_issue_guest_request(struct snp_guest_req *req, struct snp_req_data *input,
-				   struct snp_guest_request_ioctl *rio)
+static int snp_issue_guest_request(u64 exit_code, struct snp_req_data *input,
+				   u64 *exitinfo2)
 {
 	struct ghcb_state state;
 	struct es_em_ctxt ctxt;
@@ -2573,7 +2573,7 @@ static int snp_issue_guest_request(struct snp_guest_req *req, struct snp_req_dat
 	struct ghcb *ghcb;
 	int ret;
 
-	rio->exitinfo2 = SEV_RET_NO_FW_CALL;
+	*exitinfo2 = SEV_RET_NO_FW_CALL;
 
 	/*
 	 * __sev_get_ghcb() needs to run with IRQs disabled because it is using
@@ -2589,17 +2589,17 @@ static int snp_issue_guest_request(struct snp_guest_req *req, struct snp_req_dat
 
 	vc_ghcb_invalidate(ghcb);
 
-	if (req->exit_code == SVM_VMGEXIT_EXT_GUEST_REQUEST) {
+	if (exit_code == SVM_VMGEXIT_EXT_GUEST_REQUEST) {
 		ghcb_set_rax(ghcb, input->data_gpa);
 		ghcb_set_rbx(ghcb, input->data_npages);
 	}
 
-	ret = sev_es_ghcb_hv_call(ghcb, &ctxt, req->exit_code, input->req_gpa, input->resp_gpa);
+	ret = sev_es_ghcb_hv_call(ghcb, &ctxt, exit_code, input->req_gpa, input->resp_gpa);
 	if (ret)
 		goto e_put;
 
-	rio->exitinfo2 = ghcb->save.sw_exit_info_2;
-	switch (rio->exitinfo2) {
+	*exitinfo2 = ghcb->save.sw_exit_info_2;
+	switch (*exitinfo2) {
 	case 0:
 		break;
 
@@ -2609,7 +2609,7 @@ static int snp_issue_guest_request(struct snp_guest_req *req, struct snp_req_dat
 
 	case SNP_GUEST_VMM_ERR(SNP_GUEST_VMM_ERR_INVALID_LEN):
 		/* Number of expected pages are returned in RBX */
-		if (req->exit_code == SVM_VMGEXIT_EXT_GUEST_REQUEST) {
+		if (exit_code == SVM_VMGEXIT_EXT_GUEST_REQUEST) {
 			input->data_npages = ghcb_get_rbx(ghcb);
 			ret = -ENOSPC;
 			break;
@@ -3039,8 +3039,8 @@ static int enc_payload(struct snp_msg_desc *mdesc, u64 seqno, struct snp_guest_r
 	return 0;
 }
 
-static int __handle_guest_request(struct snp_msg_desc *mdesc, struct snp_guest_req *req,
-				  struct snp_guest_request_ioctl *rio)
+static int __handle_guest_request(struct snp_msg_desc *mdesc, u64 exit_code,
+				  struct snp_req_data *input, u64 *exitinfo2)
 {
 	unsigned long req_start = jiffies;
 	unsigned int override_npages = 0;
@@ -3054,7 +3054,7 @@ retry_request:
 	 * sequence number must be incremented or the VMPCK must be deleted to
 	 * prevent reuse of the IV.
 	 */
-	rc = snp_issue_guest_request(req, &mdesc->input, rio);
+	rc = snp_issue_guest_request(exit_code, input, exitinfo2);
 	switch (rc) {
 	case -ENOSPC:
 		/*
@@ -3065,7 +3065,7 @@ retry_request:
 		 * IV reuse.
 		 */
 		override_npages = mdesc->input.data_npages;
-		req->exit_code	= SVM_VMGEXIT_GUEST_REQUEST;
+		exit_code	= SVM_VMGEXIT_GUEST_REQUEST;
 
 		/*
 		 * Override the error to inform callers the given extended
@@ -3107,7 +3107,7 @@ retry_request:
 	snp_inc_msg_seqno(mdesc);
 
 	if (override_err) {
-		rio->exitinfo2 = override_err;
+		*exitinfo2 = override_err;
 
 		/*
 		 * If an extended guest request was issued and the supplied certificate
@@ -3126,7 +3126,7 @@ retry_request:
 }
 
 int snp_send_guest_request(struct snp_msg_desc *mdesc, struct snp_guest_req *req,
-			   struct snp_guest_request_ioctl *rio)
+			   u64 *exitinfo2)
 {
 	u64 seqno;
 	int rc;
@@ -3158,14 +3158,14 @@ int snp_send_guest_request(struct snp_msg_desc *mdesc, struct snp_guest_req *req
 	 */
 	memcpy(mdesc->request, &mdesc->secret_request, sizeof(mdesc->secret_request));
 
-	rc = __handle_guest_request(mdesc, req, rio);
+	rc = __handle_guest_request(mdesc, req->exit_code, &mdesc->input, exitinfo2);
 	if (rc) {
 		if (rc == -EIO &&
-		    rio->exitinfo2 == SNP_GUEST_VMM_ERR(SNP_GUEST_VMM_ERR_INVALID_LEN))
+		    *exitinfo2 == SNP_GUEST_VMM_ERR(SNP_GUEST_VMM_ERR_INVALID_LEN))
 			return rc;
 
 		pr_alert("Detected error from ASP request. rc: %d, exitinfo2: 0x%llx\n",
-			 rc, rio->exitinfo2);
+			 rc, *exitinfo2);
 
 		snp_disable_vmpck(mdesc);
 		return rc;
@@ -3184,11 +3184,11 @@ EXPORT_SYMBOL_GPL(snp_send_guest_request);
 
 static int __init snp_get_tsc_info(void)
 {
-	struct snp_guest_request_ioctl *rio;
 	struct snp_tsc_info_resp *tsc_resp;
 	struct snp_tsc_info_req *tsc_req;
 	struct snp_msg_desc *mdesc;
 	struct snp_guest_req *req;
+	u64 exitinfo2 = 0;
 	int rc = -ENOMEM;
 
 	tsc_req = kzalloc(sizeof(*tsc_req), GFP_KERNEL);
@@ -3208,13 +3208,9 @@ static int __init snp_get_tsc_info(void)
 	if (!req)
 		goto e_free_tsc_resp;
 
-	rio = kzalloc(sizeof(*rio), GFP_KERNEL);
-	if (!rio)
-		goto e_free_req;
-
 	mdesc = snp_msg_alloc();
 	if (IS_ERR_OR_NULL(mdesc))
-		goto e_free_rio;
+		goto e_free_req;
 
 	rc = snp_msg_init(mdesc, snp_vmpl);
 	if (rc)
@@ -3229,7 +3225,7 @@ static int __init snp_get_tsc_info(void)
 	req->resp_sz = sizeof(*tsc_resp) + AUTHTAG_LEN;
 	req->exit_code = SVM_VMGEXIT_GUEST_REQUEST;
 
-	rc = snp_send_guest_request(mdesc, req, rio);
+	rc = snp_send_guest_request(mdesc, req, &exitinfo2);
 	if (rc)
 		goto e_request;
 
@@ -3250,8 +3246,6 @@ e_request:
 	memzero_explicit(tsc_resp, sizeof(*tsc_resp) + AUTHTAG_LEN);
 e_free_mdesc:
 	snp_msg_free(mdesc);
-e_free_rio:
-	kfree(rio);
 e_free_req:
 	kfree(req);
  e_free_tsc_resp:
