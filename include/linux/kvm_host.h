@@ -2620,6 +2620,11 @@ bool kvm_gmem_is_private_gfn(struct kvm *kvm, gfn_t gfn);
 bool kvm_arch_gmem_device_supported(struct kvm *kvm);
 void kvm_arch_gmem_device_bind(struct kvm_memory_slot *slot,
 		const struct guest_memfd_device_binding *binding);
+int kvm_arch_gmem_device_map(struct kvm *kvm,
+		const struct kvm_memory_slot *slot,
+		u64 gpa, u64 size, u64 pa);
+int kvm_arch_gmem_device_unmap(struct kvm *kvm, u64 gpa, u64 size);
+int kvm_gmem_device_map(struct kvm *kvm, u64 gpa, u64 size, u64 pa, u64 vdev_id);
 bool kvm_arch_supports_gmem_init_shared(struct kvm *kvm);
 
 static inline u64 kvm_gmem_get_supported_flags(struct kvm *kvm)
