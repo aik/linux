@@ -12,6 +12,7 @@ int kvm_gmem_prepare_memory_region(struct kvm *kvm, struct kvm_memory_slot *slot
 				   unsigned int fd, uoff_t offset);
 int kvm_gmem_commit_memory_region(struct kvm *kvm, struct kvm_memory_slot *slot);
 void kvm_gmem_unbind(struct kvm_memory_slot *slot);
+int kvm_gmem_prepare_memslot_delete(const struct kvm_memory_slot *slot);
 #else
 static inline int kvm_gmem_init(struct module *module)
 {
@@ -37,6 +38,11 @@ static inline int kvm_gmem_commit_memory_region(struct kvm *kvm,
 static inline void kvm_gmem_unbind(struct kvm_memory_slot *slot)
 {
 	WARN_ON_ONCE(1);
+}
+
+static inline int kvm_gmem_prepare_memslot_delete(const struct kvm_memory_slot *slot)
+{
+	return 0;
 }
 #endif /* CONFIG_KVM_GUEST_MEMFD */
 
